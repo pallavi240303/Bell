@@ -204,6 +204,32 @@ contract SessionOracleTest is Test {
         _accept(conflict);
     }
 
+    function testRejectsExactReplayOfFinalBenchmarkWithoutChangingStoredFact() public {
+        Types.MarketEventReport memory finalized = _finalizeBenchmark();
+        Types.Benchmark memory beforeReplay = oracle.benchmarkOf(SESSION_ID);
+        Types.AssetState memory state = oracle.assetState(ASSET_ID);
+
+        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidNonce.selector, state.nextNonce, finalized.nonce));
+        _accept(finalized);
+
+        _assertBenchmarkEq(oracle.benchmarkOf(SESSION_ID), beforeReplay);
+    }
+
+    function testRejectsIdenticalFinalBenchmarkWithFreshNonceAndStateWithoutChangingStoredFact() public {
+        Types.MarketEventReport memory finalized = _finalizeBenchmark();
+        Types.Benchmark memory beforeReplay = oracle.benchmarkOf(SESSION_ID);
+        Types.AssetState memory state = oracle.assetState(ASSET_ID);
+
+        Types.MarketEventReport memory replay = finalized;
+        replay.nonce = state.nextNonce;
+        replay.previousStateHash = state.stateHash;
+
+        vm.expectRevert(abi.encodeWithSelector(Errors.FinalBenchmarkAlreadyAccepted.selector, SESSION_ID));
+        _accept(replay);
+
+        _assertBenchmarkEq(oracle.benchmarkOf(SESSION_ID), beforeReplay);
+    }
+
     function testRejectsZeroBenchmarkOrMultiplier() public {
         Types.MarketEventReport memory closed = _closeSession();
         Types.MarketEventReport memory report = _nextReport(closed, Types.MarketEventKind.REOPEN_BENCHMARK);
@@ -417,5 +443,19 @@ contract SessionOracleTest is Test {
     function _accept(Types.MarketEventReport memory report) internal {
         vm.prank(RECEIVER);
         oracle.acceptReport(report);
+    }
+
+    function _assertBenchmarkEq(Types.Benchmark memory actual, Types.Benchmark memory expected) internal pure {
+        assertEq(actual.finalized, expected.finalized);
+        assertEq(actual.assetId, expected.assetId);
+        assertEq(actual.sessionId, expected.sessionId);
+        assertEq(actual.configHash, expected.configHash);
+        assertEq(actual.price, expected.price);
+        assertEq(actual.multiplierNumerator, expected.multiplierNumerator);
+        assertEq(actual.multiplierDenominator, expected.multiplierDenominator);
+        assertEq(actual.observedAt, expected.observedAt);
+        assertEq(actual.primarySourceHash, expected.primarySourceHash);
+        assertEq(actual.secondarySourceHash, expected.secondarySourceHash);
+        assertEq(actual.reportHash, expected.reportHash);
     }
 }
