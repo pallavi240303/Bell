@@ -1,0 +1,29 @@
+{
+  "name": "bell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "format": "forge fmt",
+    "format:check": "forge fmt --check",
+    "lint": "npm run typecheck",
+    "build": "npm run typecheck && forge build",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:unit",
+    "test:unit": "node --import tsx --test tests/unit/*.test.ts",
+    "test:integration": "node scripts/not-implemented.mjs integration",
+    "test:e2e": "node scripts/not-implemented.mjs e2e",
+    "verify:parity": "node scripts/not-implemented.mjs parity",
+    "verify:replay": "node scripts/not-implemented.mjs replay",
+    "verify:workspace": "npm run typecheck && forge build && npm run test:unit",
+    "verify": "npm run format:check && npm run build && npm run test:unit && npm run test:integration && npm run test:e2e && npm run verify:parity && npm run verify:replay"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

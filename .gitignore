@@ -10,4 +10,6 @@ test-results/
 playwright-report/
 coverage/
 .DS_Store
-
+deployments/runs/
+evidence/runs/
+services/keeper/runs/
