@@ -82,7 +82,7 @@ BELL does not eliminate loss and does not promise buyer profit. It assigns risk 
 - Pool assets equal liquid USDC plus the exact debt of active covered loans.
 - Supply and withdrawal math must use exact observable contract state.
 - Withdrawals may be limited by available liquid USDC even when NAV is higher.
-- The MVP uses a bounded active-loan set so exact NAV is computable onchain. The bound must be explicit and gas-tested.
+- The MVP supports at most thirty-two active covered receipts per pool so exact NAV is computable onchain. Supply, withdrawal, and settlement must be gas-tested at that bound.
 
 ### Offer lots
 
@@ -123,6 +123,17 @@ The quote hash binds static consent:
 - premium, share, weighted-strike, and deadline bounds.
 
 Inclusion-time values such as actual start time and resulting funded debt ceiling belong in the immutable receipt, not in a quote field that ordinary mempool delay can invalidate.
+
+Each receipt accepts at most eight offer lots. The accepted order must be descending strike, then ascending offer ID for equal strikes.
+
+### Default MVP risk policy
+
+- Maximum origination LTV: 60%.
+- Unsafe settlement trigger LTV: 75%.
+- Post-exercise target LTV: 65%.
+- Fixed simple annual rate: 8%.
+
+These values are stored in versioned configuration and snapshotted immutably into each receipt. A future configuration may change them only for future receipts, and the registry must preserve `origination LTV < target LTV < trigger LTV`.
 
 ### Fixed simple interest
 
