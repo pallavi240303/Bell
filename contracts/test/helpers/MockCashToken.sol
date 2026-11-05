@@ -15,6 +15,8 @@ contract MockCashToken {
     uint256 public senderFee;
     address public transferHookTarget;
     bytes public transferHookData;
+    address public transferFromHookTarget;
+    bytes public transferFromHookData;
 
     event Transfer(address indexed from, address indexed to, uint256 amount);
     event Approval(address indexed owner, address indexed spender, uint256 amount);
@@ -51,6 +53,14 @@ contract MockCashToken {
         allowance[from][msg.sender] = approved - amount;
         uint256 delivered = shortTransferFrom && amount != 0 ? amount - 1 : amount;
         _move(from, to, delivered);
+        if (transferFromHookTarget != address(0)) {
+            (bool ok, bytes memory result) = transferFromHookTarget.call(transferFromHookData);
+            if (!ok) {
+                assembly ("memory-safe") {
+                    revert(add(result, 32), mload(result))
+                }
+            }
+        }
         return true;
     }
 
@@ -73,6 +83,11 @@ contract MockCashToken {
     function setTransferHook(address target, bytes calldata data) external {
         transferHookTarget = target;
         transferHookData = data;
+    }
+
+    function setTransferFromHook(address target, bytes calldata data) external {
+        transferFromHookTarget = target;
+        transferFromHookData = data;
     }
 
     function _move(address from, address to, uint256 amount) private {
