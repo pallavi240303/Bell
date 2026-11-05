@@ -4,6 +4,9 @@ pragma solidity 0.8.24;
 import {Types} from "./Types.sol";
 
 library Events {
+    event ReceiverReportAccepted(
+        bytes32 indexed reportHash, bytes32 workflowId, bytes10 workflowName, address workflowOwner, uint8 mode
+    );
     event AssetConfigScheduled(bytes32 indexed assetId, uint64 indexed version, uint64 effectiveAt, bytes32 configHash);
     event ReceiverBound(address indexed receiver);
     event MarketEventAccepted(

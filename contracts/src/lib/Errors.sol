@@ -6,6 +6,11 @@ import {Types} from "./Types.sol";
 library Errors {
     error Unauthorized(address caller);
     error UnauthorizedReceiver(address caller);
+    error ZeroWorkflowId();
+    error InvalidWorkflowIdentity();
+    error InvalidMetadataLength(uint256 length);
+    error InvalidReportLength(uint256 length);
+    error InvalidDemoAuthority();
     error ZeroAddress();
     error ZeroAssetId();
     error ZeroSessionId();
