@@ -7,7 +7,7 @@ import {Types} from "../../src/lib/Types.sol";
 import {BELLMarketEventReceiver} from "../../src/BELLMarketEventReceiver.sol";
 import {SimulationMarketEventReceiver} from "../../src/demo/SimulationMarketEventReceiver.sol";
 import {DemoReportAdapter} from "../../src/demo/DemoReportAdapter.sol";
-import {IReceiver} from "../../src/interfaces/IReceiver.sol";
+import {IReceiver, IERC165} from "../../src/interfaces/IReceiver.sol";
 import {Errors} from "../../src/lib/Errors.sol";
 
 contract MarketEventReceiverTest is Test {
@@ -42,6 +42,7 @@ contract MarketEventReceiverTest is Test {
 
     function testInterfaceIdsAndNoGenericCallSurface() public {
         assertEq(type(IReceiver).interfaceId, bytes4(keccak256("onReport(bytes,bytes)")));
+        assertEq(type(IERC165).interfaceId, bytes4(0x01ffc9a7));
         assertTrue(receiver.supportsInterface(0x01ffc9a7));
         assertTrue(receiver.supportsInterface(0x805f2132));
         assertFalse(receiver.supportsInterface(0xffffffff));
@@ -52,6 +53,24 @@ contract MarketEventReceiverTest is Test {
         assertFalse(ok);
         (ok,) = address(demo).call(abi.encodeWithSignature("onReport(bytes,bytes)", "", ""));
         assertFalse(ok);
+    }
+
+    function testProductionAccepts64ByteMetadataWithReportId() public {
+        bytes memory metadata = abi.encodePacked(ID, NAME, OWNER, bytes2(0x1234));
+        assertEq(metadata.length, 64);
+        vm.prank(FORWARDER);
+        receiver.onReport(metadata, abi.encode(_report(oracle)));
+        assertEq(uint8(oracle.sessionPhase(SESSION)), uint8(Types.SessionPhase.SCHEDULED));
+        Types.MarketEventReport memory r = _report(oracle);
+        r.kind = Types.MarketEventKind.CLOSE_CONFIRMED;
+        r.nonce = 2;
+        r.previousStateHash = oracle.assetState(ASSET).stateHash;
+        r.observedAt = r.scheduledClose;
+        r.validUntil = r.observedAt + 100;
+        vm.warp(r.observedAt);
+        vm.prank(FORWARDER);
+        receiver.onReport(abi.encodePacked(ID, NAME, OWNER, bytes2(0xffff)), abi.encode(r));
+        assertEq(uint8(oracle.sessionPhase(SESSION)), uint8(Types.SessionPhase.CLOSE_CONFIRMED));
     }
 
     function testConstructorRejectsZeroPinsAndContractDemoAuthority() public {
@@ -82,25 +101,28 @@ contract MarketEventReceiverTest is Test {
     function testProductionPinsForwarderMetadataOffsetsAndLengthWithRecovery() public {
         bytes memory payload = abi.encode(_report(oracle));
         bytes memory metadata = _metadata();
-        assertEq(metadata.length, 62);
+        assertEq(metadata.length, 64);
         vm.expectRevert(abi.encodeWithSelector(Errors.UnauthorizedReceiver.selector, SIMULATOR));
         vm.prank(SIMULATOR);
         receiver.onReport(metadata, payload);
         vm.expectRevert(abi.encodeWithSelector(Errors.InvalidMetadataLength.selector, 0));
         vm.prank(FORWARDER);
         receiver.onReport("", payload);
-        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidMetadataLength.selector, 63));
+        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidMetadataLength.selector, 65));
         vm.prank(FORWARDER);
         receiver.onReport(bytes.concat(metadata, hex"00"), payload);
-        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidMetadataLength.selector, 61));
+        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidMetadataLength.selector, 63));
         vm.prank(FORWARDER);
         receiver.onReport(_truncate(metadata), payload);
+        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidMetadataLength.selector, 62));
+        vm.prank(FORWARDER);
+        receiver.onReport(abi.encodePacked(ID, NAME, OWNER), payload);
         vm.expectRevert(Errors.InvalidWorkflowIdentity.selector);
         vm.prank(FORWARDER);
-        receiver.onReport(abi.encodePacked(bytes32(uint256(ID) ^ 1), NAME, OWNER), payload);
+        receiver.onReport(abi.encodePacked(bytes32(uint256(ID) ^ 1), NAME, OWNER, bytes2(0x1234)), payload);
         vm.expectRevert(Errors.InvalidWorkflowIdentity.selector);
         vm.prank(FORWARDER);
-        receiver.onReport(abi.encodePacked(ID, NAME, address(0xA1)), payload);
+        receiver.onReport(abi.encodePacked(ID, NAME, address(0xA1), bytes2(0x1234)), payload);
         _assertUntouched();
         vm.prank(FORWARDER);
         receiver.onReport(metadata, payload);
@@ -168,6 +190,59 @@ contract MarketEventReceiverTest is Test {
         _reject(r, abi.encodeWithSelector(Errors.InvalidSessionTransition.selector, Types.SessionPhase.NONE, r.kind));
         _send(_report(oracle));
         assertEq(oracle.assetState(ASSET).nextNonce, 2);
+    }
+
+    function testWrongNonzeroAssetCannotCloseExistingSession() public {
+        Types.MarketEventReport memory r = _report(oracle);
+        _send(r);
+        bytes32 state = oracle.assetState(ASSET).stateHash;
+        bytes32 otherAsset = keccak256("other asset");
+        r.kind = Types.MarketEventKind.CLOSE_CONFIRMED;
+        r.assetId = otherAsset;
+        r.observedAt = r.scheduledClose;
+        r.validUntil = r.observedAt + 100;
+        vm.warp(r.observedAt);
+        vm.expectRevert(abi.encodeWithSelector(Errors.SessionIdentityMismatch.selector, SESSION));
+        _send(r);
+        assertEq(oracle.assetState(ASSET).stateHash, state);
+        assertEq(oracle.assetState(ASSET).nextNonce, 2);
+        assertEq(oracle.assetState(otherAsset).stateHash, bytes32(0));
+        assertEq(oracle.assetState(otherAsset).nextNonce, 1);
+        assertEq(uint8(oracle.sessionPhase(SESSION)), uint8(Types.SessionPhase.SCHEDULED));
+        r.assetId = ASSET;
+        r.nonce = 2;
+        r.previousStateHash = state;
+        _send(r);
+        assertEq(uint8(oracle.sessionPhase(SESSION)), uint8(Types.SessionPhase.CLOSE_CONFIRMED));
+    }
+
+    function testWrongExistingSessionCannotCloseAsset() public {
+        Types.MarketEventReport memory r = _report(oracle);
+        _send(r);
+        bytes32 state = oracle.assetState(ASSET).stateHash;
+        bytes32 otherAsset = keccak256("other asset");
+        bytes32 otherSession = keccak256("other session");
+        Types.MarketEventReport memory other = _report(oracle);
+        other.assetId = otherAsset;
+        other.sessionId = otherSession;
+        _send(other);
+        bytes32 otherState = oracle.assetState(otherAsset).stateHash;
+        r.kind = Types.MarketEventKind.CLOSE_CONFIRMED;
+        r.sessionId = otherSession;
+        r.nonce = 2;
+        r.previousStateHash = state;
+        r.observedAt = r.scheduledClose;
+        r.validUntil = r.observedAt + 100;
+        vm.warp(r.observedAt);
+        vm.expectRevert(abi.encodeWithSelector(Errors.SessionIdentityMismatch.selector, otherSession));
+        _send(r);
+        assertEq(oracle.assetState(ASSET).stateHash, state);
+        assertEq(oracle.assetState(otherAsset).stateHash, otherState);
+        assertEq(uint8(oracle.sessionPhase(SESSION)), uint8(Types.SessionPhase.SCHEDULED));
+        assertEq(uint8(oracle.sessionPhase(otherSession)), uint8(Types.SessionPhase.SCHEDULED));
+        r.sessionId = SESSION;
+        _send(r);
+        assertEq(uint8(oracle.sessionPhase(SESSION)), uint8(Types.SessionPhase.CLOSE_CONFIRMED));
     }
 
     function testProgressionAndFinalReplayConflictPreserveState() public {
@@ -255,7 +330,7 @@ contract MarketEventReceiverTest is Test {
     }
 
     function _metadata() internal pure returns (bytes memory) {
-        return abi.encodePacked(ID, NAME, OWNER);
+        return abi.encodePacked(ID, NAME, OWNER, bytes2(0x1234));
     }
 
     function _report(SessionOracle target) internal view returns (Types.MarketEventReport memory r) {
