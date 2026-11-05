@@ -36,6 +36,37 @@ library Types {
         REOPEN_BENCHMARK
     }
 
+    enum OfferStatus {
+        NONE,
+        FREE,
+        RESERVED,
+        RELEASED,
+        CANCELLED
+    }
+
+    struct OfferTerms {
+        bytes32 assetId;
+        bytes32 policyHash;
+        uint256 snapshotShares;
+        uint256 strike;
+        uint256 premium;
+        uint16 maxBorrowerLtvBps;
+        uint256 referencePrice;
+        uint16 maxReferenceDeviationBps;
+        uint64 expiry;
+        uint256 nonce;
+    }
+
+    struct Offer {
+        address buyer;
+        OfferTerms terms;
+        uint256 cashCapacity;
+        uint256 cumulativeExercisedShares;
+        uint256 cumulativeCashCharged;
+        uint256 receiptId;
+        OfferStatus status;
+    }
+
     struct AssetConfig {
         address assetToken;
         uint8 stockTokenDecimals;

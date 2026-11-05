@@ -50,4 +50,22 @@ library Errors {
     error InvalidSettlementLtv();
     error TooManyFills(uint256 count);
     error InsufficientFundedCapacity(uint256 availableCash, uint256 requiredCash);
+    error NotInitialized();
+    error AlreadyInitialized();
+    error UnauthorizedManager(address caller);
+    error OfferNonceUsed(address buyer, uint256 nonce);
+    error InvalidOfferTerms();
+    error IneligibleBuyer(address buyer);
+    error NotOfferBuyer(address caller);
+    error InvalidOfferState(Types.OfferStatus expected, Types.OfferStatus actual);
+    error OfferTermsHashMismatch();
+    error OfferExpiredBeforeSettlement();
+    error BorrowerLtvTooHigh();
+    error ReferenceDeviationTooHigh();
+    error InvalidReceiptId();
+    error InvalidExerciseShares();
+    error InvalidDebtApplied();
+    error InsufficientCredit();
+    error InvalidTokenBalanceDelta(uint256 expected, uint256 actual);
+    error LiabilityShortfall(uint256 balance, uint256 liabilities);
 }
