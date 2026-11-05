@@ -34,6 +34,27 @@ contract Handler is ReceiptFixture {
     uint256 public expectedReverts;
     uint256 public violations;
     uint256 public receipt;
+    uint256 public ghostEconomicShares;
+    uint256 public ghostOriginalShares;
+    uint256 public ghostAddedShares;
+    uint256 public ghostWithdrawnShares;
+    uint256 public ghostExercisedShares;
+    uint256 public ghostResidualShares;
+    uint256 public ghostRemainingShares;
+    uint256 public ghostBacking;
+    uint256 public ghostOutstandingUnits;
+    uint256 public ghostDeliveredUnits;
+    uint256 public ghostTopupUnits;
+    uint128 public ghostMultiplierN = 1;
+    uint128 public ghostMultiplierD = 1;
+    uint128 public pendingMultiplierN = 1;
+    uint128 public pendingMultiplierD = 1;
+    mapping(uint256 => uint256) public ghostClaimShares;
+    mapping(uint256 => uint256) public ghostClaimUnits;
+    mapping(uint256 => address) public ghostClaimOwner;
+    mapping(uint256 => uint128) public ghostClaimN;
+    mapping(uint256 => uint128) public ghostClaimD;
+    mapping(uint256 => bool) public ghostClaimWithdrawn;
     bool public reported;
     bool public normalSettled;
     bool public terminalSettled;
@@ -41,6 +62,9 @@ contract Handler is ReceiptFixture {
     function borrow() external {
         if (receipt != 0 || block.timestamp >= 1499) return;
         receipt = _borrow();
+        ghostOriginalShares = quote.collateralShares;
+        ghostRemainingShares = quote.collateralShares;
+        ghostBacking = quote.collateralShares;
         assertEq(book.premiumCredit(BUYER), book.getOffer(ids[0]).terms.premium);
         assertEq(book.premiumCredit(OTHER_BUYER), book.getOffer(ids[1]).terms.premium);
         assertGe(book.getOffer(ids[0]).cashCapacity + book.getOffer(ids[1]).cashCapacity, vault.debtOf(receipt));
@@ -71,11 +95,17 @@ contract Handler is ReceiptFixture {
         uint256 beforeBacking = vault.backingOf(receipt);
         vm.prank(PAYER);
         life.addCollateral(receipt, shares);
+        ghostAddedShares += shares;
+        ghostRemainingShares += shares;
+        ghostBacking += shares;
         assertEq(vault.remainingSnapshotShares(receipt), beforeShares + shares);
         assertEq(vault.backingOf(receipt), beforeBacking + shares);
         successfulCollateralAdds++;
         vm.prank(BORROWER);
         life.withdrawCollateral(receipt, shares);
+        ghostWithdrawnShares += shares;
+        ghostRemainingShares -= shares;
+        ghostBacking -= shares;
         assertEq(vault.remainingSnapshotShares(receipt), beforeShares);
         assertEq(vault.backingOf(receipt), beforeBacking);
         successfulCollateralWithdrawals++;
@@ -84,14 +114,24 @@ contract Handler is ReceiptFixture {
     function report(uint256 seed) external {
         if (receipt == 0 || reported || terminalSettled) return;
         uint128 numerator = seed % 2 == 0 ? 2 : 1;
-        _benchmark(bound(seed, 50e6, 70e6) / numerator, numerator, 1);
+        uint128 denominator = seed % 3 == 0 ? 2 : 1;
+        pendingMultiplierN = numerator;
+        pendingMultiplierD = denominator;
+        _benchmark(bound(seed, 50e6, 70e6) * denominator / numerator, numerator, denominator);
+        assertEq(oracle.benchmarkOf(SESSION).multiplierNumerator, numerator);
+        assertEq(oracle.benchmarkOf(SESSION).multiplierDenominator, denominator);
         reported = true;
         successfulReports++;
     }
 
     function settle() external {
         if (!reported || normalSettled || terminalSettled) return;
+        uint256[2] memory beforeExercise = _exerciseTotals();
+        uint256 firstClaim = vault.nextClaimId();
         _settle(receipt, false);
+        ghostMultiplierN = pendingMultiplierN;
+        ghostMultiplierD = pendingMultiplierD;
+        _recordExpectedClaims(beforeExercise, firstClaim);
         normalSettled = true;
         successfulSettlements++;
     }
@@ -102,7 +142,10 @@ contract Handler is ReceiptFixture {
         uint256 cappedDebt = vault.debtOf(receipt);
         vm.warp(2001);
         assertEq(vault.debtOf(receipt), cappedDebt);
+        uint256[2] memory beforeExercise = _exerciseTotals();
+        uint256 firstClaim = vault.nextClaimId();
         _settle(receipt, true);
+        _recordExpectedClaims(beforeExercise, firstClaim);
         terminalSettled = true;
         successfulTerminal++;
     }
@@ -126,16 +169,21 @@ contract Handler is ReceiptFixture {
 
     function withdrawClaims() external {
         for (uint256 i = 1; i < vault.nextClaimId(); ++i) {
-            LoanVault.Claim memory claim = vault.getClaim(i);
-            if (claim.withdrawn || claim.snapshotShares == 0) continue;
-            if (claim.deliveryUnits > vault.backingOf(receipt)) continue;
+            if (ghostClaimWithdrawn[i] || ghostClaimShares[i] == 0) continue;
+            uint256 expectedUnits = ghostClaimUnits[i];
+            if (expectedUnits == 0 || expectedUnits > ghostBacking) continue;
             uint256 beforeBacking = vault.backingOf(receipt);
-            uint256 beforeBalance = stock.balanceOf(claim.owner);
-            vm.prank(claim.owner);
-            try vault.withdrawClaim(i, claim.owner) returns (uint256 delivered) {
-                assertEq(delivered, claim.deliveryUnits);
+            address owner = ghostClaimOwner[i];
+            uint256 beforeBalance = stock.balanceOf(owner);
+            vm.prank(owner);
+            try vault.withdrawClaim(i, owner) returns (uint256 delivered) {
+                assertEq(delivered, expectedUnits);
                 assertEq(beforeBacking - vault.backingOf(receipt), delivered);
-                assertEq(stock.balanceOf(claim.owner) - beforeBalance, delivered);
+                assertEq(stock.balanceOf(owner) - beforeBalance, delivered);
+                ghostBacking -= delivered;
+                ghostOutstandingUnits -= delivered;
+                ghostDeliveredUnits += delivered;
+                ghostClaimWithdrawn[i] = true;
                 successfulClaims++;
             } catch {
                 violations++;
@@ -145,11 +193,13 @@ contract Handler is ReceiptFixture {
 
     function topUp() external {
         if (receipt == 0) return;
-        uint256 owed = vault.outstandingClaimUnits(receipt);
-        uint256 backing = vault.backingOf(receipt);
+        uint256 owed = ghostOutstandingUnits;
+        uint256 backing = ghostBacking;
         if (owed <= backing) return;
         vm.prank(PAYER);
         life.topUpBacking(receipt, owed - backing);
+        ghostBacking += owed - backing;
+        ghostTopupUnits += owed - backing;
         successfulTopups++;
     }
 
@@ -310,11 +360,77 @@ contract Handler is ReceiptFixture {
         if (reason.length >= 4) assembly ("memory-safe") { value := mload(add(reason, 32)) }
     }
 
+    function _exerciseTotals() internal view returns (uint256[2] memory totals) {
+        for (uint256 i; i < 2; ++i) {
+            totals[i] = book.getOffer(ids[i]).cumulativeExercisedShares;
+        }
+    }
+
+    function _recordExpectedClaims(uint256[2] memory beforeExercise, uint256 claimId) internal {
+        for (uint256 i; i < 2; ++i) {
+            Types.Offer memory offer = book.getOffer(ids[i]);
+            uint256 shares = offer.cumulativeExercisedShares - beforeExercise[i];
+            if (shares == 0) continue;
+            ghostExercisedShares += shares;
+            ghostRemainingShares -= shares;
+            _recordExpectedClaim(claimId++, offer.buyer, shares);
+        }
+        if (vault.getDebt(receipt).closed && ghostRemainingShares != 0) {
+            uint256 shares = ghostRemainingShares;
+            ghostResidualShares += shares;
+            ghostRemainingShares = 0;
+            _recordExpectedClaim(claimId++, BORROWER, shares);
+        }
+        assertEq(claimId, vault.nextClaimId());
+    }
+
+    function _recordExpectedClaim(uint256 claimId, address owner, uint256 shares) internal {
+        uint256 units = shares * ghostMultiplierN / ghostMultiplierD;
+        ghostClaimShares[claimId] = shares;
+        ghostClaimUnits[claimId] = units;
+        ghostClaimOwner[claimId] = owner;
+        ghostClaimN[claimId] = ghostMultiplierN;
+        ghostClaimD[claimId] = ghostMultiplierD;
+        ghostEconomicShares += shares;
+        ghostOutstandingUnits += units;
+        LoanVault.Claim memory claim = vault.getClaim(claimId);
+        assertEq(claim.owner, owner);
+        assertEq(claim.snapshotShares, shares);
+        assertEq(claim.reportMultiplierNumerator, ghostMultiplierN);
+        assertEq(claim.reportMultiplierDenominator, ghostMultiplierD);
+        assertEq(claim.deliveryUnits, units);
+    }
+
     function checkAccounting() external view {
         assertEq(book.totalLiabilities(), cash.balanceOf(address(book)));
         if (receipt == 0) return;
+        assertEq(
+            ghostOriginalShares + ghostAddedShares, ghostWithdrawnShares + ghostEconomicShares + ghostRemainingShares
+        );
+        assertEq(ghostEconomicShares, ghostExercisedShares + ghostResidualShares);
+        assertEq(
+            ghostBacking + ghostDeliveredUnits + ghostWithdrawnShares,
+            ghostOriginalShares + ghostAddedShares + ghostTopupUnits
+        );
+        assertEq(vault.remainingSnapshotShares(receipt), ghostRemainingShares);
+        assertEq(vault.outstandingClaimUnits(receipt), ghostOutstandingUnits);
+        assertEq(vault.backingOf(receipt), ghostBacking);
         assertEq(vault.backingOf(receipt), vault.accountedBacking(address(stock)));
         assertEq(vault.backingOf(receipt), stock.balanceOf(address(vault)));
+        uint256 observedExercised;
+        for (uint256 i; i < ids.length; ++i) {
+            observedExercised += book.getOffer(ids[i]).cumulativeExercisedShares;
+        }
+        assertEq(observedExercised, ghostExercisedShares);
+        for (uint256 i = 1; i < vault.nextClaimId(); ++i) {
+            LoanVault.Claim memory claim = vault.getClaim(i);
+            assertEq(claim.owner, ghostClaimOwner[i]);
+            assertEq(claim.snapshotShares, ghostClaimShares[i]);
+            assertEq(claim.deliveryUnits, ghostClaimShares[i] * ghostClaimN[i] / ghostClaimD[i]);
+            assertEq(claim.reportMultiplierNumerator, ghostClaimN[i]);
+            assertEq(claim.reportMultiplierDenominator, ghostClaimD[i]);
+            assertEq(claim.withdrawn, ghostClaimWithdrawn[i]);
+        }
         assertEq(book.premiumCredit(BUYER), book.getOffer(ids[0]).terms.premium);
         assertEq(book.premiumCredit(OTHER_BUYER), book.getOffer(ids[1]).terms.premium);
         if (normalSettled) {
