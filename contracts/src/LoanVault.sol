@@ -39,6 +39,7 @@ contract LoanVault is ReentrancyGuard {
         uint128 reportMultiplierDenominator;
         uint64 maturesAt;
         bool withdrawn;
+        uint256 deliveryUnits;
     }
 
     address public immutable owner;
@@ -47,6 +48,7 @@ contract LoanVault is ReentrancyGuard {
     mapping(uint256 receiptId => uint256 tokenUnits) public backingOf;
     mapping(address token => uint256 tokenUnits) public accountedBacking;
     mapping(uint256 receiptId => uint256 shares) public remainingSnapshotShares;
+    mapping(uint256 receiptId => uint256 units) public outstandingClaimUnits;
     mapping(uint256 claimId => Claim claim) private _claims;
     uint256 public nextClaimId = 1;
 
@@ -54,6 +56,18 @@ contract LoanVault is ReentrancyGuard {
     error ZeroDelivery();
     error InvalidClaim();
     error ClaimNotMature();
+    error HandoffIncomplete();
+
+    event ClaimRecorded(
+        uint256 indexed claimId,
+        uint256 indexed receiptId,
+        address indexed owner,
+        uint256 snapshotShares,
+        uint256 deliveryUnits
+    );
+    event ClaimWithdrawn(uint256 indexed claimId, address indexed to, uint256 deliveryUnits);
+    event BackingAdded(uint256 indexed receiptId, address indexed from, uint256 units);
+    event SurplusReleased(uint256 indexed receiptId, address indexed borrower, uint256 units);
 
     modifier onlyManager() {
         if (coverManager == address(0)) revert Errors.NotInitialized();
@@ -129,6 +143,10 @@ contract LoanVault is ReentrancyGuard {
         return _requireDebt(receiptId);
     }
 
+    function cumulativeDebtReductionOf(uint256 receiptId) external view returns (uint256) {
+        return _requireDebt(receiptId).cumulativeDebtReduction;
+    }
+
     function reduceDebt(uint256 receiptId, uint256 newCumulativeReduction)
         external
         onlyManager
@@ -152,6 +170,7 @@ contract LoanVault is ReentrancyGuard {
         backingOf[receiptId] += amount;
         accountedBacking[token] += amount;
         _pullExact(IERC20(token), from, amount);
+        emit BackingAdded(receiptId, from, amount);
     }
 
     /// @notice Assign separately minted/donated tokens; already-accounted balances cannot be reused.
@@ -176,6 +195,7 @@ contract LoanVault is ReentrancyGuard {
         uint256 remaining = remainingSnapshotShares[receiptId] + shares;
         if (remaining > type(uint128).max) revert Errors.UnsupportedShareAmount();
         uint256 units = _convertedUnits(record.terms, shares, reportN, reportD);
+        if (units == 0) revert ZeroDelivery();
         remainingSnapshotShares[receiptId] = remaining;
         backingOf[receiptId] += units;
         accountedBacking[record.terms.assetToken] += units;
@@ -190,6 +210,9 @@ contract LoanVault is ReentrancyGuard {
         DebtRecord storage record = _requireDebt(receiptId);
         if (shares > remainingSnapshotShares[receiptId]) revert Errors.InvalidExerciseShares();
         uint256 units = _convertedUnits(record.terms, shares, reportN, reportD);
+        if (units == 0) revert ZeroDelivery();
+        uint256 backing = backingOf[receiptId];
+        if (units > backing || outstandingClaimUnits[receiptId] > backing - units) revert InsufficientBacking();
         remainingSnapshotShares[receiptId] -= shares;
         _debitBacking(receiptId, record.terms.assetToken, units);
         _pushExact(IERC20(record.terms.assetToken), to, units);
@@ -204,13 +227,16 @@ contract LoanVault is ReentrancyGuard {
         uint128 reportD,
         uint64 maturesAt
     ) external onlyManager returns (uint256 claimId) {
-        _requireDebt(receiptId);
+        DebtRecord storage record = _requireDebt(receiptId);
         if (buyer == address(0)) revert Errors.ZeroAddress();
         if (shares == 0 || shares > remainingSnapshotShares[receiptId]) revert Errors.InvalidExerciseShares();
         if (reportN == 0 || reportD == 0) revert Errors.InvalidMultiplier();
+        uint256 units = _convertedUnits(record.terms, shares, reportN, reportD);
         remainingSnapshotShares[receiptId] -= shares;
+        outstandingClaimUnits[receiptId] += units;
         claimId = nextClaimId++;
-        _claims[claimId] = Claim(buyer, receiptId, shares, reportN, reportD, maturesAt, false);
+        _claims[claimId] = Claim(buyer, receiptId, shares, reportN, reportD, maturesAt, false, units);
+        emit ClaimRecorded(claimId, receiptId, buyer, shares, units);
     }
 
     function getClaim(uint256 claimId) external view returns (Claim memory) {
@@ -224,12 +250,27 @@ contract LoanVault is ReentrancyGuard {
         // forge-lint: disable-next-line(block-timestamp)
         if (block.timestamp < claim.maturesAt) revert ClaimNotMature();
         DebtTerms storage terms = _debts[claim.receiptId].terms;
-        units = _convertedUnits(
-            terms, claim.snapshotShares, claim.reportMultiplierNumerator, claim.reportMultiplierDenominator
-        );
+        units = claim.deliveryUnits;
+        if (units == 0) revert ZeroDelivery();
         claim.withdrawn = true;
+        outstandingClaimUnits[claim.receiptId] -= units;
         _debitBacking(claim.receiptId, terms.assetToken, units);
         _pushExact(IERC20(terms.assetToken), to, units);
+        emit ClaimWithdrawn(claimId, to, units);
+    }
+
+    /// @notice Only unallocated backing can leave after every deliverable claim has been withdrawn.
+    function releaseSurplus(uint256 receiptId) external nonReentrant onlyManager returns (uint256 units) {
+        DebtRecord storage record = _requireDebt(receiptId);
+        if (!record.closed || remainingSnapshotShares[receiptId] != 0 || outstandingClaimUnits[receiptId] != 0) {
+            revert HandoffIncomplete();
+        }
+        units = backingOf[receiptId];
+        if (units != 0) {
+            _debitBacking(receiptId, record.terms.assetToken, units);
+            _pushExact(IERC20(record.terms.assetToken), record.terms.borrower, units);
+        }
+        emit SurplusReleased(receiptId, record.terms.borrower, units);
     }
 
     function _convertedUnits(DebtTerms storage terms, uint256 shares, uint128 reportN, uint128 reportD)
@@ -246,7 +287,6 @@ contract LoanVault is ReentrancyGuard {
             uint256(reportN) * terms.snapshotMultiplierDenominator,
             uint256(reportD) * terms.snapshotMultiplierNumerator
         );
-        if (units == 0) revert ZeroDelivery();
     }
 
     function _debitBacking(uint256 receiptId, address token, uint256 units) private {

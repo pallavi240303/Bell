@@ -3,6 +3,8 @@ pragma solidity 0.8.24;
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {AssetRegistry} from "./AssetRegistry.sol";
 import {SessionOracle} from "./SessionOracle.sol";
 import {CommitmentBook} from "./CommitmentBook.sol";
@@ -16,9 +18,12 @@ import {QuoteHash} from "./lib/QuoteHash.sol";
 import {Types} from "./lib/Types.sol";
 
 contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
+    using SafeERC20 for IERC20;
+
     enum ReceiptStatus {
         NONE,
         ACTIVE,
+        HANDOFF_PENDING,
         CLOSED
     }
 
@@ -32,6 +37,10 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
         uint64 settlementDeadline;
         uint256 debtCeiling;
         ReceiptStatus status;
+        bytes32 benchmarkReportHash;
+        uint256 benchmarkValuePerSnapshotShare;
+        uint128 latestMultiplierNumerator;
+        uint128 latestMultiplierDenominator;
     }
 
     struct BorrowValidation {
@@ -57,10 +66,21 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
     error ConfigNotEffective();
     error AssetHalted();
     error ComponentMismatch();
+    error ReceiptNotActive();
+    error ReceiptNotPending();
+    error SettlementDeadlineReached();
+    error SettlementDeadlineNotReached();
+    error BenchmarkUnavailable();
+    error BenchmarkIdentityMismatch();
+    error BenchmarkAlreadyProcessed();
+    error ReservedCollateral();
+    error HandoffIncomplete();
+    error CashDebtTransition();
 
     uint256 public nextReceiptId = 1;
     mapping(address => uint256) public borrowerNonce;
     mapping(uint256 receiptId => Receipt receipt) private _receipts;
+    bool private _cashDebtTransition;
 
     AssetRegistry public immutable registry;
     SessionOracle public immutable oracle;
@@ -78,6 +98,26 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
         uint64 settlementDeadline,
         uint256 debtCeiling
     );
+    event Repaid(uint256 indexed receiptId, address indexed payer, uint256 amount, uint256 debtAfter);
+    event CollateralAdded(uint256 indexed receiptId, address indexed payer, uint256 snapshotShares);
+    event CollateralWithdrawn(uint256 indexed receiptId, address indexed borrower, uint256 snapshotShares);
+    event BenchmarkProcessed(
+        uint256 indexed receiptId,
+        bytes32 indexed reportHash,
+        uint256 valuePerSnapshotShare,
+        uint128 multiplierNumerator,
+        uint128 multiplierDenominator
+    );
+    event ReceiptOfferExercised(
+        uint256 indexed receiptId,
+        bytes32 indexed offerId,
+        uint256 indexed claimId,
+        uint256 additionalShares,
+        uint256 debtApplied
+    );
+    event FinanciallyClosed(uint256 indexed receiptId, uint256 borrowerClaimId);
+    event HandoffPending(uint256 indexed receiptId);
+    event ReceiptClosed(uint256 indexed receiptId);
 
     constructor(address registry_, address oracle_, address book_, address pool_, address vault_) {
         if (
@@ -122,7 +162,11 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
             startTime: valid.startTime,
             settlementDeadline: valid.settlementDeadline,
             debtCeiling: valid.debtCeiling,
-            status: ReceiptStatus.ACTIVE
+            status: ReceiptStatus.ACTIVE,
+            benchmarkReportHash: bytes32(0),
+            benchmarkValuePerSnapshotShare: 0,
+            latestMultiplierNumerator: quote.snapshotMultiplierNumerator,
+            latestMultiplierDenominator: quote.snapshotMultiplierDenominator
         });
         _fundReceipt(receiptId, valid.borrowerLtvBps);
         emit CoveredBorrowCreated(
@@ -179,7 +223,213 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
     }
 
     function debtOf(uint256 receiptId) external view returns (uint256) {
+        // Prevent pool pricing against temporarily double-counted cash and debt during token callbacks.
+        if (_cashDebtTransition) revert CashDebtTransition();
         return vault.debtOf(receiptId);
+    }
+
+    function repay(uint256 receiptId, uint256 amount) external nonReentrant {
+        Receipt storage receipt = _active(receiptId);
+        uint256 debt = vault.debtOf(receiptId);
+        if (amount == 0 || amount > debt) revert Errors.InvalidDebtApplied();
+        _cashDebtTransition = true;
+        _pullRepayment(msg.sender, amount);
+        _reduceDebt(receiptId, amount);
+        _cashDebtTransition = false;
+        emit Repaid(receiptId, msg.sender, amount, debt - amount);
+        if (amount == debt) _financialClose(receiptId, receipt);
+    }
+
+    function addCollateral(uint256 receiptId, uint256 snapshotShares) external nonReentrant {
+        Receipt storage receipt = _active(receiptId);
+        vault.addCollateral(
+            receiptId,
+            msg.sender,
+            snapshotShares,
+            receipt.latestMultiplierNumerator,
+            receipt.latestMultiplierDenominator
+        );
+        emit CollateralAdded(receiptId, msg.sender, snapshotShares);
+    }
+
+    function withdrawCollateral(uint256 receiptId, uint256 snapshotShares) external nonReentrant {
+        Receipt storage receipt = _active(receiptId);
+        if (msg.sender != receipt.consent.borrower) revert InvalidBorrower();
+        _beforeDeadline(receipt);
+        uint256 collateral = vault.remainingSnapshotShares(receiptId);
+        if (snapshotShares == 0 || snapshotShares > collateral) revert Errors.InvalidExerciseShares();
+        uint256 afterShares = collateral - snapshotShares;
+        uint256 reservedShares;
+        for (uint256 i; i < receipt.offerIds.length; ++i) {
+            Types.Offer memory offer = book.getOffer(receipt.offerIds[i]);
+            reservedShares += offer.terms.snapshotShares - offer.cumulativeExercisedShares;
+        }
+        if (afterShares < reservedShares) revert ReservedCollateral();
+        uint256 price = receipt.benchmarkReportHash == bytes32(0)
+            ? receipt.consent.referencePrice
+            : receipt.benchmarkValuePerSnapshotShare;
+        if (!SettlementMath.isAtOrBelowTarget(
+                vault.debtOf(receiptId), afterShares, price, receipt.config.originationLtvBps
+            )) {
+            revert Errors.BorrowerLtvTooHigh();
+        }
+        vault.releaseCollateral(
+            receiptId,
+            msg.sender,
+            snapshotShares,
+            receipt.latestMultiplierNumerator,
+            receipt.latestMultiplierDenominator
+        );
+        emit CollateralWithdrawn(receiptId, msg.sender, snapshotShares);
+    }
+
+    function settle(uint256 receiptId) external nonReentrant {
+        Receipt storage receipt = _active(receiptId);
+        _beforeDeadline(receipt);
+        if (receipt.benchmarkReportHash != bytes32(0)) revert BenchmarkAlreadyProcessed();
+        Types.Benchmark memory benchmark = oracle.benchmarkOf(receipt.consent.sessionId);
+        if (!benchmark.finalized) revert BenchmarkUnavailable();
+        if (
+            benchmark.assetId != receipt.consent.assetId || benchmark.sessionId != receipt.consent.sessionId
+                || benchmark.configHash != receipt.consent.configHash || benchmark.reportHash == bytes32(0)
+        ) {
+            revert BenchmarkIdentityMismatch();
+        }
+        // Report/snapshot products fit 256 bits. One full-width division floors only the final value.
+        uint256 price = FixedPointMath.mulDivDown(
+            benchmark.price,
+            uint256(benchmark.multiplierNumerator) * receipt.consent.snapshotMultiplierDenominator,
+            uint256(benchmark.multiplierDenominator) * receipt.consent.snapshotMultiplierNumerator
+        );
+        receipt.benchmarkReportHash = benchmark.reportHash;
+        receipt.benchmarkValuePerSnapshotShare = price;
+        receipt.latestMultiplierNumerator = benchmark.multiplierNumerator;
+        receipt.latestMultiplierDenominator = benchmark.multiplierDenominator;
+        emit BenchmarkProcessed(
+            receiptId, benchmark.reportHash, price, benchmark.multiplierNumerator, benchmark.multiplierDenominator
+        );
+        _executePlan(receiptId, receipt, price);
+    }
+
+    function terminalSettle(uint256 receiptId) external nonReentrant {
+        Receipt storage receipt = _active(receiptId);
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp < receipt.settlementDeadline) revert SettlementDeadlineNotReached();
+        _executePlan(receiptId, receipt, 0);
+        if (vault.debtOf(receiptId) != 0) revert Errors.InvalidDebtApplied();
+    }
+
+    /// @notice Anyone can fund physical delivery without changing economic collateral or debt.
+    function topUpBacking(uint256 receiptId, uint256 tokenUnits) external nonReentrant {
+        Receipt storage receipt = _receipt(receiptId);
+        if (receipt.status == ReceiptStatus.CLOSED) revert ReceiptNotPending();
+        vault.topUpBacking(receiptId, msg.sender, tokenUnits);
+    }
+
+    function finalizeHandoff(uint256 receiptId) external nonReentrant {
+        Receipt storage receipt = _receipt(receiptId);
+        if (receipt.status != ReceiptStatus.HANDOFF_PENDING) revert ReceiptNotPending();
+        if (vault.outstandingClaimUnits(receiptId) != 0) revert HandoffIncomplete();
+        vault.releaseSurplus(receiptId);
+        receipt.status = ReceiptStatus.CLOSED;
+        emit ReceiptClosed(receiptId);
+    }
+
+    function _executePlan(uint256 receiptId, Receipt storage receipt, uint256 price) private {
+        uint256 length = receipt.offerIds.length;
+        SettlementMath.LotState[] memory lots = new SettlementMath.LotState[](length);
+        for (uint256 i; i < length; ++i) {
+            Types.Offer memory offer = book.getOffer(receipt.offerIds[i]);
+            lots[i] = SettlementMath.LotState(
+                offer.terms.strike, offer.terms.snapshotShares, offer.cumulativeExercisedShares
+            );
+        }
+        SettlementMath.Plan memory plan = SettlementMath.planNormal(
+            vault.debtOf(receiptId),
+            vault.remainingSnapshotShares(receiptId),
+            price,
+            receipt.config.triggerLtvBps,
+            receipt.config.targetLtvBps,
+            lots
+        );
+        for (uint256 i; i < length; ++i) {
+            SettlementMath.Fill memory fill = plan.fills[i];
+            if (fill.additionalShares == 0) continue;
+            bytes32 offerId = receipt.offerIds[i];
+            _cashDebtTransition = true;
+            book.exerciseOffer(
+                offerId, lots[i].exercisedShares + fill.additionalShares, fill.debtApplied, receipt.consent.borrower
+            );
+            _reduceDebt(receiptId, fill.debtApplied);
+            _cashDebtTransition = false;
+            uint256 claimId = _claim(receiptId, receipt, book.getOffer(offerId).buyer, fill.additionalShares);
+            emit ReceiptOfferExercised(receiptId, offerId, claimId, fill.additionalShares, fill.debtApplied);
+        }
+        if (plan.debtAfter == 0) _financialClose(receiptId, receipt);
+    }
+
+    function _claim(uint256 receiptId, Receipt storage receipt, address beneficiary, uint256 shares)
+        private
+        returns (uint256)
+    {
+        // Claims are immediately mature. Capping a late terminal timestamp avoids narrowing overflow.
+        uint64 maturity = receipt.settlementDeadline;
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp < maturity) maturity = uint64(block.timestamp);
+        return vault.recordClaim(
+            receiptId,
+            beneficiary,
+            shares,
+            receipt.latestMultiplierNumerator,
+            receipt.latestMultiplierDenominator,
+            maturity
+        );
+    }
+
+    function _financialClose(uint256 receiptId, Receipt storage receipt) private {
+        for (uint256 i; i < receipt.offerIds.length; ++i) {
+            book.releaseOffer(receipt.offerIds[i]);
+        }
+        pool.closeLoan(receiptId);
+        uint256 shares = vault.remainingSnapshotShares(receiptId);
+        uint256 borrowerClaimId;
+        if (shares != 0) borrowerClaimId = _claim(receiptId, receipt, receipt.consent.borrower, shares);
+        receipt.status = ReceiptStatus.HANDOFF_PENDING;
+        emit FinanciallyClosed(receiptId, borrowerClaimId);
+        emit HandoffPending(receiptId);
+    }
+
+    function _reduceDebt(uint256 receiptId, uint256 amount) private {
+        vault.reduceDebt(receiptId, vault.cumulativeDebtReductionOf(receiptId) + amount);
+    }
+
+    function _pullRepayment(address payer, uint256 amount) private {
+        IERC20 token = IERC20(address(pool.cashToken()));
+        if (payer == address(pool)) revert Errors.InvalidTokenBalanceDelta(amount, 0);
+        uint256 payerBefore = token.balanceOf(payer);
+        uint256 poolBefore = token.balanceOf(address(pool));
+        token.safeTransferFrom(payer, address(pool), amount);
+        uint256 payerAfter = token.balanceOf(payer);
+        uint256 poolAfter = token.balanceOf(address(pool));
+        uint256 spent = payerBefore >= payerAfter ? payerBefore - payerAfter : 0;
+        uint256 received = poolAfter >= poolBefore ? poolAfter - poolBefore : 0;
+        if (spent != amount) revert Errors.InvalidTokenBalanceDelta(amount, spent);
+        if (received != amount) revert Errors.InvalidTokenBalanceDelta(amount, received);
+    }
+
+    function _beforeDeadline(Receipt storage receipt) private view {
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp >= receipt.settlementDeadline) revert SettlementDeadlineReached();
+    }
+
+    function _receipt(uint256 receiptId) private view returns (Receipt storage receipt) {
+        receipt = _receipts[receiptId];
+        if (receipt.status == ReceiptStatus.NONE) revert Errors.InvalidReceiptId();
+    }
+
+    function _active(uint256 receiptId) private view returns (Receipt storage receipt) {
+        receipt = _receipt(receiptId);
+        if (receipt.status != ReceiptStatus.ACTIVE) revert ReceiptNotActive();
     }
 
     function _requireBindings() private view {
