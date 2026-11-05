@@ -167,6 +167,9 @@ library SettlementMath {
             uint256 remainingLotShares = lot.totalShares - lot.exercisedShares;
             if (remainingLotShares == 0 || plan.collateralAfter == 0) continue;
             if (remainingLotShares > plan.collateralAfter) remainingLotShares = plan.collateralAfter;
+            uint256 cappedLotShares = lot.exercisedShares + remainingLotShares;
+            uint256 capacityCash = cashDelta(lot.exercisedShares, cappedLotShares, lot.strike);
+            if (capacityCash == 0) continue;
 
             uint256 additionalShares;
             uint256 chargedCash;
@@ -192,12 +195,10 @@ library SettlementMath {
             }
 
             if (forceFullClosure) {
-                (additionalShares, chargedCash) = minimumSharesForCash(
-                    lot.exercisedShares, lot.exercisedShares + remainingLotShares, lot.strike, plan.debtAfter
-                );
+                uint256 requestedCash = plan.debtAfter < capacityCash ? plan.debtAfter : capacityCash;
+                (additionalShares, chargedCash) =
+                    minimumSharesForCash(lot.exercisedShares, cappedLotShares, lot.strike, requestedCash);
             } else {
-                uint256 cappedLotShares = lot.exercisedShares + remainingLotShares;
-                uint256 capacityCash = cashDelta(lot.exercisedShares, cappedLotShares, lot.strike);
                 (additionalShares, chargedCash) =
                     minimumSharesForCash(lot.exercisedShares, cappedLotShares, lot.strike, capacityCash);
             }

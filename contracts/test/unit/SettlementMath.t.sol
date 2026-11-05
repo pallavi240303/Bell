@@ -179,6 +179,23 @@ contract SettlementMathTest is Test {
         assertEq(SettlementMath.cashDelta(0, plan.fills[0].additionalShares - 1, 1), 1);
     }
 
+    function testZeroCashLotDoesNotForceLaterFundedTargetIntoFullClosure() public pure {
+        SettlementMath.LotState[] memory lots = new SettlementMath.LotState[](2);
+        lots[0] = _lot(1, SHARE_SCALE, SHARE_SCALE / 2);
+        lots[1] = _lot(6, SHARE_SCALE / 2, 0);
+
+        SettlementMath.Plan memory plan = SettlementMath.planNormal(5, 2 * SHARE_SCALE, 3, TRIGGER_LTV, 5_000, lots);
+
+        assertEq(uint8(plan.outcome), uint8(SettlementMath.Outcome.TARGET_REACHED));
+        assertEq(plan.fillCount, 1);
+        assertEq(plan.fills[0].additionalShares, 0);
+        assertEq(plan.fills[0].cashCharged, 0);
+        assertEq(plan.fills[1].additionalShares, 333_333_333_333_333_334);
+        assertEq(plan.fills[1].cashCharged, 3);
+        assertEq(plan.fills[1].debtApplied, 3);
+        assertEq(plan.debtAfter, 2);
+    }
+
     function testNonImprovingLotForcesFundedFullClosureInOrder() public pure {
         SettlementMath.LotState[] memory lots = new SettlementMath.LotState[](2);
         lots[0] = _lot(50_000_000, SHARE_SCALE, 0);
@@ -190,7 +207,8 @@ contract SettlementMathTest is Test {
         assertEq(uint8(plan.outcome), uint8(SettlementMath.Outcome.FULL_CLOSURE));
         assertEq(plan.debtAfter, 0);
         assertEq(plan.fillCount, 2);
-        assertEq(plan.fills[0].additionalShares, SHARE_SCALE);
+        assertEq(plan.fills[0].additionalShares, 999_999_980_000_000_001);
+        assertEq(plan.fills[0].cashCharged, 50_000_000);
         assertEq(plan.fills[0].debtApplied, 50_000_000);
         assertEq(plan.fills[1].debtApplied, 750_000_000);
     }
@@ -206,6 +224,26 @@ contract SettlementMathTest is Test {
         assertEq(plan.debtAfter, 0);
         assertEq(plan.fills[0].additionalShares, 4_999_999_990_000_000_001);
         assertEq(plan.fills[0].cashCharged, 500_000_000);
+    }
+
+    function testFullClosureClampsEachCashRequestToSupportedLotCapacity() public pure {
+        uint256 maximum = type(uint128).max;
+        SettlementMath.LotState[] memory lots = new SettlementMath.LotState[](2);
+        lots[0] = _lot(SHARE_SCALE, maximum, maximum - 1);
+        lots[1] = _lot(SHARE_SCALE, 1, 0);
+
+        SettlementMath.Plan memory plan = SettlementMath.planNormal(2, 2, 0, TRIGGER_LTV, TARGET_LTV, lots);
+
+        assertEq(uint8(plan.outcome), uint8(SettlementMath.Outcome.FULL_CLOSURE));
+        assertEq(plan.fillCount, 2);
+        assertEq(plan.fills[0].additionalShares, 1);
+        assertEq(plan.fills[0].cashCharged, 1);
+        assertEq(plan.fills[0].debtApplied, 1);
+        assertEq(plan.fills[1].additionalShares, 1);
+        assertEq(plan.fills[1].cashCharged, 1);
+        assertEq(plan.fills[1].debtApplied, 1);
+        assertEq(plan.debtAfter, 0);
+        assertEq(plan.collateralAfter, 0);
     }
 
     function testDebtClearingFillCreditsOnlyLastFillExcess() public pure {
