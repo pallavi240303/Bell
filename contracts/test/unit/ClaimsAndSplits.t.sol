@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {MockStockToken} from "../../src/demo/MockStockToken.sol";
 import {LoanVault} from "../../src/LoanVault.sol";
 import {Errors} from "../../src/lib/Errors.sol";
@@ -284,7 +285,7 @@ contract ClaimsAndSplitsTest is Test {
         bad.setSenderFee(0);
         bad.setTransferHook(address(vault), abi.encodeCall(ClaimAPI.withdrawClaim, (id, BUYER)));
         vm.prank(BUYER);
-        vm.expectRevert();
+        vm.expectRevert(ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
         claims.withdrawClaim(id, BUYER);
         assertFalse(claims.getClaim(id).withdrawn);
         assertEq(vault.backingOf(1), 100);

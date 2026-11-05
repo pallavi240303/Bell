@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {ProtectedPool} from "../../src/ProtectedPool.sol";
 import {MockCashToken} from "../helpers/MockCashToken.sol";
 import {Errors} from "../../src/lib/Errors.sol";
@@ -185,7 +186,7 @@ contract ProtectedPoolTest is Test {
         api.disburse(address(8), 10);
         token.setSenderFee(0);
         token.setTransferHook(address(p), abi.encodeCall(PoolDebtAPI.redeem, (1e12, address(8))));
-        vm.expectRevert();
+        vm.expectRevert(ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
         api.redeem(10e12, address(8));
         assertEq(token.balanceOf(address(p)), 100);
         assertEq(token.balanceOf(address(8)), 0);
