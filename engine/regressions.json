@@ -20,5 +20,23 @@
       "expected": "MockCashToken decrements allowance even at uint256 maximum; the full observable snapshot must include this decrement.",
       "mismatch": "All financial outputs agreed but the post-repayment full-state hash differed because the test cash token's allowance semantics were omitted."
     }
+    ,{
+      "id": "finite-stock-approval-spending",
+      "input": { "kind": "addCollateral", "amount": "4", "stockAllowanceVault": "10", "snapshotMultiplier": ["1", "1"], "reportMultiplier": ["1", "1"] },
+      "expected": { "stockAllowanceVault": "6" },
+      "mismatch": "The original state transition left finite stock allowance unchanged. Both addCollateral and topUp now mirror OZ spending, preserve maximum approval, and return ERC20InsufficientAllowance(vault,current,needed) before pause checks."
+    },
+    {
+      "id": "cash-insufficient-allowance-string-revert",
+      "input": { "kind": "repay", "amount": "4", "cashAllowanceManager": "3", "debt": "500" },
+      "expected": { "name": "Error", "args": ["allowance"] },
+      "mismatch": "Checked subtraction previously emitted Panic(17), while the real cash token emits Error(string). The wrapper's payer-equals-pool check must also precede all token checks and injected token failures."
+    },
+    {
+      "id": "negative-public-action-amount",
+      "input": { "kind": "topUp", "amount": "-1", "now": "2" },
+      "expected": { "name": "TypeError", "message": "invalid uint256", "stateChange": false },
+      "mismatch": "The public bigint API accepted values impossible to ABI-encode as Solidity uints. All transition action uint/address/bytes fields now validate their canonical type and width before execution; malformed inputs are not fabricated Solidity reverts."
+    }
   ]
 }

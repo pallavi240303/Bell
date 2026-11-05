@@ -9,6 +9,7 @@ import {QuoteHash} from "../../src/lib/QuoteHash.sol";
 import {Types} from "../../src/lib/Types.sol";
 import {LoanVault} from "../../src/LoanVault.sol";
 import {CoverManager} from "../../src/CoverManager.sol";
+import {CommitmentBook} from "../../src/CommitmentBook.sol";
 import {ReceiptFixture} from "../helpers/ReceiptFixture.sol";
 
 contract EngineMathHarness {
@@ -141,6 +142,280 @@ contract EngineDiffTest is EngineBatch {
 }
 
 contract EngineLifecycleDiffTest is ReceiptFixture, EngineBatch {
+    struct BookSnapshot {
+        uint256 chainId;
+        address book_;
+        address manager_;
+        address pool_;
+        bytes32[] ids_;
+        address[] buyers;
+        uint256[] nonces;
+        Types.Offer[] offers;
+        bytes32[] termsHashes;
+        bool[] used;
+        uint256[3] totals;
+        address[] actors;
+        uint256[4][] balances;
+    }
+
+    struct BookStep {
+        uint256 kind;
+        address caller;
+        uint256 now_;
+        bytes32 id;
+        Types.OfferTerms terms;
+        bool eligible;
+        bytes32 termsHash;
+        uint256 receiptId;
+        address payer;
+        uint64 deadline;
+        uint256 referencePrice;
+        uint16 ltv;
+        uint256 cumulative;
+        uint256 applied;
+        address borrower;
+    }
+
+    function _bookSnapshot(CommitmentBook b, bytes32[] memory offerIds) internal view returns (BookSnapshot memory s) {
+        s.chainId = block.chainid;
+        s.book_ = address(b);
+        s.manager_ = address(this);
+        s.pool_ = address(pool);
+        s.ids_ = offerIds;
+        s.buyers = new address[](2);
+        s.nonces = new uint256[](2);
+        s.offers = new Types.Offer[](2);
+        s.termsHashes = new bytes32[](2);
+        s.used = new bool[](2);
+        for (uint256 i; i < 2; ++i) {
+            s.buyers[i] = BUYER;
+            s.nonces[i] = 70 + i;
+            s.offers[i] = b.getOffer(offerIds[i]);
+            s.termsHashes[i] = b.termsHashOf(offerIds[i]);
+            s.used[i] = b.nonceUsed(BUYER, 70 + i);
+        }
+        s.totals = [b.totalLockedCash(), b.totalPremiumCredits(), b.totalCashCredits()];
+        s.actors = new address[](5);
+        s.actors[0] = BUYER;
+        s.actors[1] = BORROWER;
+        s.actors[2] = PAYER;
+        s.actors[3] = address(b);
+        s.actors[4] = address(pool);
+        s.balances = new uint256[4][](5);
+        for (uint256 i; i < 5; ++i) {
+            address who = s.actors[i];
+            s.balances[i] =
+                [cash.balanceOf(who), b.premiumCredit(who), b.cashCredit(who), cash.allowance(who, address(b))];
+        }
+    }
+
+    function testActualOfferLifecycleObservableStateAndRollback() public {
+        CommitmentBook b = new CommitmentBook(address(cash), address(eligibility), address(this));
+        b.initialize(address(this), address(pool));
+        vm.prank(BUYER);
+        cash.approve(address(b), type(uint256).max);
+        vm.prank(BORROWER);
+        cash.approve(address(b), 1000);
+        bytes32[] memory offerIds = new bytes32[](2);
+        offerIds[0] = b.computeOfferId(BUYER, 70);
+        offerIds[1] = b.computeOfferId(BUYER, 71);
+        Request[] memory requests = new Request[](20);
+        Observation[] memory expected = new Observation[](20);
+        for (uint256 i; i < 20; ++i) {
+            BookStep memory a;
+            a.caller = address(this);
+            a.now_ = block.timestamp;
+            a.id = offerIds[i < 5 ? 0 : 1];
+            a.eligible = true;
+            a.terms = Types.OfferTerms(ASSET, POLICY, 5e18, 100e6, 100, 6000, 100e6, 0, 2000, i < 5 ? 70 : 71);
+            a.termsHash = b.termsHashOf(a.id);
+            a.receiptId = 1;
+            a.payer = BORROWER;
+            a.deadline = 2000;
+            a.referencePrice = 100e6;
+            a.ltv = 5000;
+            a.borrower = BORROWER;
+            if (i < 2 || i == 5 || i == 19) {
+                a.kind = 0;
+                a.caller = BUYER;
+            } else if (i == 2 || i == 3 || i == 18) {
+                a.kind = 1;
+                a.caller = i == 2 ? PAYER : BUYER;
+            } else if (i == 4 || (i >= 6 && i <= 12)) {
+                a.kind = 2;
+            } else if (i >= 13 && i <= 15) {
+                a.kind = 3;
+            } else {
+                a.kind = 4;
+            }
+            if (i == 6) a.caller = BUYER;
+            if (i == 7) a.termsHash = bytes32(uint256(1));
+            if (i == 8) a.deadline = 2001;
+            if (i == 9) a.ltv = 6001;
+            if (i == 10) a.referencePrice = 200e6;
+            if (i == 11) a.eligible = false;
+            if (i == 14) {
+                a.cumulative = 1e18;
+                a.applied = 90e6;
+            }
+            if (i == 15) {
+                a.cumulative = 2e18;
+                a.applied = 100e6;
+            }
+            if (i == 19) {
+                a.terms.expiry = uint64(block.timestamp);
+                a.eligible = false;
+            }
+            eligibility.setEligible(ASSET, BUYER, POLICY, a.eligible);
+            BookSnapshot memory before_ = _bookSnapshot(b, offerIds);
+            requests[i] = Request(12, abi.encode(before_, a));
+            bytes memory data;
+            if (a.kind == 0) {
+                data = abi.encodeCall(b.postOffer, (a.terms));
+            } else if (a.kind == 1) {
+                data = abi.encodeCall(b.cancelOffer, (a.id));
+            } else if (a.kind == 2) {
+                data = abi.encodeCall(
+                    b.reserveOffer, (a.id, a.termsHash, a.receiptId, a.payer, a.deadline, a.referencePrice, a.ltv)
+                );
+            } else if (a.kind == 3) {
+                data = abi.encodeCall(b.exerciseOffer, (a.id, a.cumulative, a.applied, a.borrower));
+            } else {
+                data = abi.encodeCall(b.releaseOffer, (a.id));
+            }
+            vm.prank(a.caller);
+            (bool ok, bytes memory returned) = address(b).call(data);
+            bytes32 afterHash = keccak256(abi.encode(_bookSnapshot(b, offerIds)));
+            if (!ok) assertEq(afterHash, keccak256(abi.encode(before_)), "real book rollback");
+            expected[i] = Observation(ok, ok ? bytes("") : returned, afterHash);
+        }
+        Result[] memory results = _batch(requests);
+        for (uint256 i; i < 20; ++i) {
+            assertTrue(results[i].ok);
+            Observation memory actual = abi.decode(results[i].data, (Observation));
+            assertEq(actual.ok, expected[i].ok, vm.toString(i));
+            assertEq(actual.error, expected[i].error, vm.toString(i));
+            assertEq(actual.stateHash, expected[i].stateHash, vm.toString(i));
+        }
+    }
+
+    struct BorrowFacts {
+        address caller;
+        uint256 borrowerNonce;
+        uint256 chainId;
+        address manager;
+        bytes32 expectedHash;
+        bool bindingsMatch;
+        uint64 effectiveAt;
+        uint8 tokenDecimals;
+        bytes32 configHash;
+        bool halted;
+        uint8 phase;
+        uint64 scheduledClose;
+        bytes32 sessionAssetId;
+        bytes32 activeSessionId;
+        bytes32 sessionConfigHash;
+        bytes32 stateConfigHash;
+        bytes32 scheduledReportHash;
+        bytes32 actionHash;
+        uint128 actionN;
+        uint128 actionD;
+        bool[] eligible;
+    }
+
+    function _borrowFacts(address caller, bytes32 expectedHash) internal view returns (BorrowFacts memory f) {
+        Types.SessionFact memory session = oracle.sessionFact(SESSION);
+        Types.AssetState memory state = oracle.assetState(ASSET);
+        Types.CorporateActionFact memory action = oracle.latestCorporateAction(ASSET);
+        f.caller = caller;
+        f.borrowerNonce = manager.borrowerNonce(caller);
+        f.chainId = block.chainid;
+        f.manager = address(manager);
+        f.expectedHash = expectedHash;
+        f.bindingsMatch = true;
+        (, f.effectiveAt, f.configHash) = registry.getConfig(ASSET, 1);
+        f.tokenDecimals = 18;
+        f.halted = state.halted;
+        f.phase = uint8(session.phase);
+        f.scheduledClose = session.scheduledClose;
+        f.sessionAssetId = session.assetId;
+        f.activeSessionId = state.activeSessionId;
+        f.sessionConfigHash = session.configHash;
+        f.stateConfigHash = state.configHash;
+        f.scheduledReportHash = session.scheduledReportHash;
+        f.actionHash = action.reportHash;
+        f.actionN = action.multiplierNumerator;
+        f.actionD = action.multiplierDenominator;
+        f.eligible = new bool[](ids.length);
+        for (uint256 j; j < ids.length; ++j) {
+            f.eligible[j] = true;
+        }
+    }
+
+    function testValidateBorrowAgainstRealManagerAndValidationPrecedence() public {
+        uint256 checkpoint = vm.snapshotState();
+        Request[] memory requests = new Request[](16);
+        Result[] memory expected = new Result[](16);
+        for (uint256 i; i < 16; ++i) {
+            assertTrue(vm.revertToState(checkpoint));
+            address caller = BORROWER;
+            if (i == 1) {
+                caller = PAYER;
+                quote.borrowerNonce = 9;
+                quote.expiry = 0;
+            }
+            if (i == 2) {
+                quote.borrowerNonce = 9;
+                quote.expiry = 0;
+            }
+            if (i == 3) {
+                quote.recipient = address(0);
+                quote.expiry = 0;
+            }
+            if (i == 4) quote.expiry = 0;
+            if (i == 6) vm.warp(1000);
+            if (i == 7) {
+                Types.MarketEventReport memory halt = _report(Types.MarketEventKind.HALT);
+                halt.halted = true;
+                oracle.acceptReport(halt);
+            }
+            if (i == 8) quote.principal = 0;
+            if (i == 9) quote.collateralShares = 0;
+            if (i == 10) quote.referencePrice = 0;
+            if (i == 11) quote.principal = 700e6;
+            if (i == 12) quote.maxSettlementDeadline = 1999;
+            if (i == 13) hashes[0] = bytes32(uint256(1));
+            if (i == 14) {
+                (ids[0], ids[1]) = (ids[1], ids[0]);
+                (hashes[0], hashes[1]) = (hashes[1], hashes[0]);
+            }
+            if (i == 15) quote.totalPremium += 1;
+            bytes32 digest = i == 5 ? bytes32(0) : QuoteHash.hash(address(manager), quote, ids, hashes);
+            Types.Offer[] memory offers = new Types.Offer[](ids.length);
+            bytes32[] memory actualHashes = new bytes32[](ids.length);
+            for (uint256 j; j < ids.length; ++j) {
+                offers[j] = book.getOffer(ids[j]);
+                actualHashes[j] = book.termsHashOf(ids[j]);
+            }
+            requests[i] = Request(
+                11,
+                abi.encode(
+                    quote, _config(1), ids, hashes, offers, actualHashes, block.timestamp, _borrowFacts(caller, digest)
+                )
+            );
+            vm.prank(caller);
+            (bool ok, bytes memory returned) =
+                address(manager).call(abi.encodeCall(manager.borrowWithCover, (quote, ids, hashes, digest)));
+            if (ok) returned = abi.encode(manager.getReceipt(abi.decode(returned, (uint256))));
+            expected[i] = Result(ok, returned);
+        }
+        Result[] memory actual = _batch(requests);
+        for (uint256 i; i < actual.length; ++i) {
+            assertEq(actual[i].ok, expected[i].ok, vm.toString(i));
+            assertEq(actual[i].data, expected[i].data, vm.toString(i));
+        }
+    }
+
     function testSeededCanonicalQuoteAndOfferHashes100Cases() public {
         EngineMathHarness mathHarness = new EngineMathHarness();
         for (uint256 domain; domain < 2; ++domain) {
@@ -248,6 +523,7 @@ contract EngineLifecycleDiffTest is ReceiptFixture, EngineBatch {
         address to;
         Types.Benchmark benchmark;
         bool paused;
+        bool cashCallback;
     }
 
     struct Observation {
@@ -313,6 +589,10 @@ contract EngineLifecycleDiffTest is ReceiptFixture, EngineBatch {
     function _step(uint256 id, Step memory step) internal returns (Observation memory result) {
         vm.warp(step.now_);
         stock.setPaused(step.paused);
+        cash.setTransferFromHook(
+            step.cashCallback ? address(pool) : address(0),
+            step.cashCallback ? abi.encodeCall(pool.totalAssets, ()) : bytes("")
+        );
         bytes memory callData;
         address target = address(manager);
         if (step.kind == 0) {
@@ -343,6 +623,45 @@ contract EngineLifecycleDiffTest is ReceiptFixture, EngineBatch {
         (result.ok, result.error) = target.call(callData);
         if (result.ok) result.error = "";
         result.stateHash = keccak256(abi.encode(_snapshot(id)));
+    }
+
+    function testAllowanceAndTokenFailurePrecedenceFullStateRegressions() public {
+        uint256 checkpoint = vm.snapshotState();
+        Request[] memory requests = new Request[](12);
+        Observation[][] memory expected = new Observation[][](12);
+        for (uint256 i; i < 12; ++i) {
+            assertTrue(vm.revertToState(checkpoint));
+            uint256 id = _borrow();
+            vm.startPrank(PAYER);
+            stock.approve(address(vault), i % 3 == 0 ? 0 : i % 3 == 1 ? 6 : type(uint256).max);
+            cash.approve(address(manager), i == 6 || i == 10 ? 3 : type(uint256).max);
+            vm.stopPrank();
+            Snapshot memory before_ = _snapshot(id);
+            Step[] memory steps = new Step[](3);
+            expected[i] = new Observation[](3);
+            for (uint256 j; j < 3; ++j) {
+                steps[j].kind = i < 3 ? 1 : i < 6 ? 5 : 0;
+                steps[j].now_ = 1002;
+                steps[j].caller = i == 8 ? address(pool) : PAYER;
+                steps[j].amount = j == 0 ? 4 : j == 1 ? 3 : 2;
+                steps[j].to = PAYER;
+                steps[j].paused = i < 6 && j == 1;
+                steps[j].cashCallback = i >= 8;
+                expected[i][j] = _step(id, steps[j]);
+            }
+            requests[i] = Request(10, abi.encode(before_, steps));
+        }
+        Result[] memory results = _batch(requests);
+        for (uint256 i; i < 12; ++i) {
+            assertTrue(results[i].ok);
+            Observation[] memory actual = abi.decode(results[i].data, (Observation[]));
+            for (uint256 j; j < 3; ++j) {
+                string memory label = string.concat(vm.toString(i), "/", vm.toString(j));
+                assertEq(actual[j].ok, expected[i][j].ok, label);
+                assertEq(actual[j].error, expected[i][j].error, label);
+                assertEq(actual[j].stateHash, expected[i][j].stateHash, label);
+            }
+        }
     }
 
     function testSeededLifecycleFullObservableStateAndReceiptConstruction() public {

@@ -7,21 +7,38 @@ import { debt } from './interest.ts';
 import { cashDelta, minimumSharesForCash, planNormal } from './settle.ts';
 import { convertedUnits } from './claims.ts';
 import { encode, QUOTE_ABI, TERMS_ABI, quoteHash, hashEncoded } from './quote.ts';
-import { constructReceipt } from './receipt.ts';
-import { offerId, termsHash } from './offers.ts';
+import { constructReceipt, validateBorrow, type BorrowFacts } from './receipt.ts';
+import { offerId, termsHash, emptyBook, bookTransition, type BookAction } from './offers.ts';
 import { initialState, transition, debtOf, type State, type Action, type Benchmark } from './state.ts';
 export const PLAN_ABI = '(uint8 outcome,(uint256 additionalShares,uint256 cashCharged,uint256 debtApplied,uint256 borrowerExcess)[] fills,uint8 fillCount,uint256 debtAfter,uint256 collateralAfter,uint256 borrowerExcess)';
 const LOTS_ABI='(uint256 strike,uint256 totalShares,uint256 exercisedShares)[]';
+const BORROW_FACTS_ABI='(address caller,uint256 borrowerNonce,uint256 chainId,address manager,bytes32 expectedHash,bool bindingsMatch,uint64 effectiveAt,uint8 tokenDecimals,bytes32 configHash,bool halted,uint8 phase,uint64 scheduledClose,bytes32 sessionAssetId,bytes32 activeSessionId,bytes32 sessionConfigHash,bytes32 stateConfigHash,bytes32 scheduledReportHash,bytes32 actionHash,uint128 actionN,uint128 actionD,bool[] eligible)';
 export const CONFIG_ABI='(address assetToken,uint8 stockTokenDecimals,uint8 cashTokenDecimals,uint16 originationLtvBps,uint16 targetLtvBps,uint16 triggerLtvBps,uint32 rateNumerator,uint64 rateDenominator,uint8 maxFills,uint8 maxActiveReceipts,uint8 supportedCorporateActions)';
 export const OFFER_ABI=`(address buyer,${TERMS_ABI} terms,uint256 cashCapacity,uint256 cumulativeExercisedShares,uint256 cumulativeCashCharged,uint256 receiptId,uint8 status)`;
+const BOOK_SNAPSHOT_ABI=`(uint256 chainId,address book_,address manager_,address pool_,bytes32[] ids_,address[] buyers,uint256[] nonces,${OFFER_ABI}[] offers,bytes32[] termsHashes,bool[] used,uint256[3] totals,address[] actors,uint256[4][] balances)`;
+const BOOK_STEP_ABI=`(uint256 kind,address caller,uint256 now_,bytes32 id,${TERMS_ABI} terms,bool eligible,bytes32 termsHash,uint256 receiptId,address payer,uint64 deadline,uint256 referencePrice,uint16 ltv,uint256 cumulative,uint256 applied,address borrower)`;
+interface BookSnapshot {chainId:bigint;book_:Hex;manager_:Hex;pool_:Hex;ids_:Hex[];buyers:Hex[];nonces:bigint[];offers:Offer[];termsHashes:Hex[];used:boolean[];totals:bigint[];actors:Hex[];balances:bigint[][]}
+type BookStep = Omit<BookAction,'kind'|'now'|'reference'> & {kind:bigint;now_:bigint;referencePrice:bigint};
+function bookStep(w:BookSnapshot,a:BookStep):Hex {
+  let state=emptyBook(w.chainId,w.book_,w.manager_,w.pool_);
+  for(const [i,id]of w.ids_.entries()){state.offers[id]=w.offers[i]!;state.termsHashes[id]=w.termsHashes[i]!;state.usedNonces[`${w.buyers[i]}:${w.nonces[i]}`]=w.used[i]!;}
+  [state.locked,state.premiums,state.credits]=w.totals as [bigint,bigint,bigint];
+  for(const [i,who]of w.actors.entries()){const b=w.balances[i]!;state.balances[who]=b[0]!;state.premiumCredits[who]=b[1]!;state.cashCredits[who]=b[2]!;state.allowances[who]=b[3]!;}
+  const kinds:Record<string,BookAction['kind']>={'0':'post','1':'cancel','2':'reserve','3':'exercise','4':'release'};
+  const kind=kinds[a.kind.toString()];if(!kind)throw new TypeError('unknown book action');
+  let ok=true,revertData:Hex='0x';
+  try{state=bookTransition(state,{...a,kind,now:a.now_,reference:a.referencePrice});}catch(e){if(!(e instanceof SolidityError))throw e;ok=false;revertData=errorData(e);}
+  const after:BookSnapshot={...w,offers:w.ids_.map(id=>state.offers[id]!),termsHashes:w.ids_.map(id=>state.termsHashes[id]!),used:w.ids_.map((_,i)=>state.usedNonces[`${w.buyers[i]}:${w.nonces[i]}`]??false),totals:[state.locked,state.premiums,state.credits],balances:w.actors.map(who=>[state.balances[who]??0n,state.premiumCredits[who]??0n,state.cashCredits[who]??0n,state.allowances[who]??0n])};
+  return encode('(bool ok,bytes revertData,bytes32 stateHash)',[{ok,revertData,stateHash:hashEncoded(BOOK_SNAPSHOT_ABI,[after])}]);
+}
 export const RECEIPT_ABI=`(${QUOTE_ABI} consent,${CONFIG_ABI} config,bytes32 quoteHash,bytes32[] offerIds,bytes32[] offerTermsHashes,uint64 startTime,uint64 settlementDeadline,uint256 debtCeiling,uint8 status,bytes32 benchmarkReportHash,uint256 benchmarkValuePerSnapshotShare,uint128 latestMultiplierNumerator,uint128 latestMultiplierDenominator)`;
 const DEBT_ABI='((address borrower,bytes32 assetId,address assetToken,uint256 originalPrincipal,uint32 rateNumerator,uint64 rateDenominator,uint64 startTime,uint64 settlementDeadline,uint256 snapshotCollateral,uint128 snapshotMultiplierNumerator,uint128 snapshotMultiplierDenominator) terms,uint256 cumulativeDebtReduction,bool closed)';
 const CLAIM_ABI='(address owner,uint256 receiptId,uint256 snapshotShares,uint128 reportMultiplierNumerator,uint128 reportMultiplierDenominator,uint64 maturesAt,bool withdrawn,uint256 deliveryUnits)';
 const BENCHMARK_ABI='(bool finalized,bytes32 assetId,bytes32 sessionId,bytes32 configHash,uint256 price,uint128 multiplierNumerator,uint128 multiplierDenominator,uint64 observedAt,bytes32 primarySourceHash,bytes32 secondarySourceHash,bytes32 reportHash)';
 const SNAPSHOT_ABI=`(${RECEIPT_ABI} receipt,${DEBT_ABI} debt,${OFFER_ABI}[] offers,${CLAIM_ABI}[] claims,uint256[] counters,address[3] components,address[] actors,uint256[8][] balances,uint256[] activeIds)`;
-const STEP_ABI=`(uint256 kind,uint256 now_,address caller,uint256 amount,uint256 claimId,address to,${BENCHMARK_ABI} benchmark,bool paused)`;
+const STEP_ABI=`(uint256 kind,uint256 now_,address caller,uint256 amount,uint256 claimId,address to,${BENCHMARK_ABI} benchmark,bool paused,bool cashCallback)`;
 interface Snapshot { receipt:Receipt;debt:DebtRecord;offers:Offer[];claims:Claim[];counters:bigint[];components:[Hex,Hex,Hex];actors:Hex[];balances:bigint[][];activeIds:bigint[] }
-interface Step { kind:bigint;now_:bigint;caller:Hex;amount:bigint;claimId:bigint;to:Hex;benchmark:Benchmark;paused:boolean }
+interface Step { kind:bigint;now_:bigint;caller:Hex;amount:bigint;claimId:bigint;to:Hex;benchmark:Benchmark;paused:boolean;cashCallback:boolean }
 function fromSnapshot(w:Snapshot):State {
   const c=w.counters,s=initialState(c[0]!,w.receipt,w.offers,...w.components);
   s.debt=w.debt;s.claims=w.claims;s.nextClaimId=c[1]!;s.remainingShares=c[2]!;s.backing=c[3]!;s.accountedBacking=c[4]!;s.outstandingUnits=c[5]!;s.totalLockedCash=c[6]!;s.totalPremiumCredits=c[7]!;s.totalCashCredits=c[8]!;s.activeReceiptIds=w.activeIds;
@@ -39,7 +56,7 @@ function trace(w:Snapshot,steps:Step[]):Hex {
   const results=steps.map(step=>{
     const kind=kinds[step.kind.toString()];if(!kind)throw new TypeError('unknown step');
     let ok=true,error:Hex='0x';
-    try{state=transition(state,{kind,now:step.now_,caller:step.caller,amount:step.amount,claimId:step.claimId,to:step.to,benchmark:step.benchmark,...(step.paused?{stockFailure:new SolidityError('TransfersPaused')}: {})});}
+    try{state=transition(state,{kind,now:step.now_,caller:step.caller,amount:step.amount,claimId:step.claimId,to:step.to,benchmark:step.benchmark,...(step.paused?{stockFailure:new SolidityError('TransfersPaused')}: {}),...(step.cashCallback?{cashFailure:new SolidityError('CashDebtTransition')}: {})});}
     catch(e){if(!(e instanceof SolidityError))throw e;ok=false;error=errorData(e);}
     return {ok,revertData:error,stateHash:hashEncoded(SNAPSHOT_ABI,[snapshot(state,w,step.now_)])};
   });
@@ -58,7 +75,7 @@ export function decode(schema:string,input:Hex): unknown[] {
   const result=bigints(decodeAbiParameters(parseAbiParameters(schema),input)) as unknown[];
   if(encode(schema,result)!==input)throw new TypeError('noncanonical ABI payload');return result;
 }
-const ERROR_ARGS: Record<string,string>={Panic:'uint256',TooManyFills:'uint256',InsufficientFundedCapacity:'uint256,uint256',InvalidOfferState:'uint8,uint8',OfferNonceUsed:'address,uint256',IneligibleBuyer:'address',NotOfferBuyer:'address',UnauthorizedManager:'address',InvalidDecimals:'uint8,uint8',InvalidTokenBalanceDelta:'uint256,uint256',ERC20InsufficientBalance:'address,uint256,uint256',LiabilityShortfall:'uint256,uint256'};
+const ERROR_ARGS: Record<string,string>={Error:'string',ERC20InsufficientAllowance:'address,uint256,uint256',Panic:'uint256',TooManyFills:'uint256',InsufficientFundedCapacity:'uint256,uint256',InvalidOfferState:'uint8,uint8',OfferNonceUsed:'address,uint256',IneligibleBuyer:'address',NotOfferBuyer:'address',UnauthorizedManager:'address',InvalidDecimals:'uint8,uint8',InvalidTokenBalanceDelta:'uint256,uint256',ERC20InsufficientBalance:'address,uint256,uint256',LiabilityShortfall:'uint256,uint256'};
 export function errorData(error:SolidityError):Hex {
   const schema=ERROR_ARGS[error.name]??'';
   if(schema===''&&error.args.length!==0)throw new TypeError(`unknown error signature ${error.name}`);
@@ -76,6 +93,8 @@ export function evaluate(op:bigint,input:Hex,chainId:bigint):Hex {
   if(op===8n){const [book,offer]=decode(`address,${OFFER_ABI}`,input) as [Hex,Offer];const id=offerId(chainId,book,offer.buyer,offer.terms.nonce);return encode('bytes32,bytes32',[id,termsHash(id,offer)]);}
   if(op===9n){const a=decode(`${QUOTE_ABI},${CONFIG_ABI},bytes32[],bytes32[],${OFFER_ABI}[],bytes32[],bytes32,uint256,uint256`,input) as [Quote,Config,Hex[],Hex[],Offer[],Hex[],Hex,bigint,bigint];return encode(RECEIPT_ABI,[constructReceipt(...a)]);}
   if(op===10n){const a=decode(`${SNAPSHOT_ABI},${STEP_ABI}[]`,input) as [Snapshot,Step[]];return trace(...a);}
+  if(op===11n){const a=decode(`${QUOTE_ABI},${CONFIG_ABI},bytes32[],bytes32[],${OFFER_ABI}[],bytes32[],uint256,${BORROW_FACTS_ABI}`,input) as [Quote,Config,Hex[],Hex[],Offer[],Hex[],bigint,BorrowFacts];return encode(RECEIPT_ABI,[validateBorrow(...a)]);}
+  if(op===12n){const a=decode(`${BOOK_SNAPSHOT_ABI},${BOOK_STEP_ABI}`,input) as [BookSnapshot,BookStep];return bookStep(...a);}
   throw new TypeError('unknown FFI operation');
 }
 function canonicalInteger(v:unknown):bigint{if(typeof v!=='string'||!/^(0|[1-9][0-9]*)$/.test(v))throw new TypeError('integers must be canonical decimal strings');return uint(BigInt(v));}

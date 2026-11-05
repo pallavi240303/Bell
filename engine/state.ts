@@ -4,7 +4,7 @@ import { debt } from './interest.ts';
 import { convertedUnits } from './claims.ts';
 import { exercise, requireOfferStatus } from './offers.ts';
 import { isAtOrBelowTarget, planNormal } from './settle.ts';
-import { fail, type Hex, type Receipt, type Offer, type DebtRecord, type Claim, type SolidityError } from './types.ts';
+import { fail, fixed, uint, SolidityError, type Hex, type Receipt, type Offer, type DebtRecord, type Claim } from './types.ts';
 export interface State {
   receiptId: bigint; receipt: Receipt; debt: DebtRecord; offers: Offer[]; claims: Claim[]; firstClaimId: bigint; nextClaimId: bigint;
   remainingShares: bigint; backing: bigint; accountedBacking: bigint; outstandingUnits: bigint;
@@ -15,6 +15,25 @@ export interface State {
 }
 export interface Benchmark { finalized: boolean; assetId: Hex; sessionId: Hex; configHash: Hex; price: bigint; multiplierNumerator: bigint; multiplierDenominator: bigint; reportHash: Hex }
 export interface Action { kind: 'repay'|'addCollateral'|'withdrawCollateral'|'settle'|'terminal'|'topUp'|'finalize'|'withdrawClaim'|'withdrawPremium'|'withdrawCredit'; now: bigint; caller: Hex; amount?: bigint; claimId?: bigint; to?: Hex; benchmark?: Benchmark; stockFailure?: SolidityError; cashFailure?: SolidityError }
+function validateAction(a: Action): void {
+  if (!['repay','addCollateral','withdrawCollateral','settle','terminal','topUp','finalize','withdrawClaim','withdrawPremium','withdrawCredit'].includes(a.kind)) throw new TypeError('unknown action');
+  uint(a.now);
+  fixed(a.caller, 20n);
+  if (a.amount !== undefined) uint(a.amount);
+  if (a.claimId !== undefined) uint(a.claimId);
+  if (a.to !== undefined) fixed(a.to, 20n);
+  if (a.benchmark !== undefined) {
+    const b = a.benchmark;
+    if (typeof b.finalized !== 'boolean') throw new TypeError('invalid bool');
+    for (const value of [b.assetId,b.sessionId,b.configHash,b.reportHash]) fixed(value,32n);
+    uint(b.price);
+    uint(b.multiplierNumerator,128n);
+    uint(b.multiplierDenominator,128n);
+  }
+  for (const failure of [a.stockFailure,a.cashFailure]) {
+    if (failure !== undefined && !(failure instanceof SolidityError)) throw new TypeError('invalid token failure');
+  }
+}
 const balance = (map: Record<Hex,bigint>, who: Hex) => map[who] ?? 0n;
 function credit(map: Record<Hex,bigint>, who: Hex, amount: bigint): void { map[who] = checked(balance(map,who) + amount); }
 function transfer(map: Record<Hex,bigint>, from: Hex, to: Hex, amount: bigint, failure?: SolidityError): void {
@@ -25,13 +44,14 @@ function transfer(map: Record<Hex,bigint>, from: Hex, to: Hex, amount: bigint, f
   map[from] = available - amount; credit(map,to,amount);
 }
 export function initialState(id: bigint, receipt: Receipt, offers: Offer[], pool: Hex, book: Hex, vault: Hex): State {
+  uint(id); fixed(pool,20n); fixed(book,20n); fixed(vault,20n);
   const q = receipt.consent, c = receipt.config;
   const state: State = { cashAllowanceManager:{},stockAllowanceVault:{},cashDecrementsInfiniteAllowance:false,receiptId:id, receipt:structuredClone(receipt), debt:{ terms:{ borrower:q.borrower,assetId:q.assetId,assetToken:c.assetToken,originalPrincipal:q.principal,rateNumerator:c.rateNumerator,rateDenominator:c.rateDenominator,startTime:receipt.startTime,settlementDeadline:receipt.settlementDeadline,snapshotCollateral:q.collateralShares,snapshotMultiplierNumerator:q.snapshotMultiplierNumerator,snapshotMultiplierDenominator:q.snapshotMultiplierDenominator },cumulativeDebtReduction:0n,closed:false },offers:structuredClone(offers),claims:[],firstClaimId:1n,nextClaimId:1n,remainingShares:q.collateralShares,backing:q.collateralShares,accountedBacking:q.collateralShares,outstandingUnits:0n,totalLockedCash:0n,totalPremiumCredits:0n,totalCashCredits:0n,premiumCredits:{},cashCredits:{},cashBalances:{},stockBalances:{},pool,book,vault,activeReceiptIds:[id] };
   for (const offer of offers) { state.totalLockedCash += offer.cashCapacity; state.totalPremiumCredits += offer.terms.premium; credit(state.premiumCredits,offer.buyer,offer.terms.premium); }
   state.cashBalances[book]=state.totalLockedCash+state.totalPremiumCredits;state.stockBalances[vault]=q.collateralShares;
   return state;
 }
-export function debtOf(s: State, now: bigint): bigint { const t=s.debt.terms; return s.debt.closed ? 0n : debt(t.originalPrincipal,t.rateNumerator,t.startTime,t.settlementDeadline,min(now,t.settlementDeadline),t.rateDenominator,s.debt.cumulativeDebtReduction); }
+export function debtOf(s: State, now: bigint): bigint { uint(now); const t=s.debt.terms; return s.debt.closed ? 0n : debt(t.originalPrincipal,t.rateNumerator,t.startTime,t.settlementDeadline,min(now,t.settlementDeadline),t.rateDenominator,s.debt.cumulativeDebtReduction); }
 function reduce(s: State, amount: bigint, now: bigint): void { const due=debtOf(s,now); if (s.debt.closed || amount===0n || amount>due) fail('InvalidDebtApplied'); s.debt.cumulativeDebtReduction+=amount;if(amount===due)s.debt.closed=true; }
 function units(s: State, shares: bigint): bigint { const t=s.debt.terms,r=s.receipt;return convertedUnits(shares,t.snapshotMultiplierNumerator,t.snapshotMultiplierDenominator,r.latestMultiplierNumerator,r.latestMultiplierDenominator); }
 function claim(s: State, owner: Hex, shares: bigint, now: bigint): void {
@@ -47,8 +67,20 @@ function close(s: State, now: bigint): void {
   s.receipt.status=2n;
 }
 function debitBacking(s: State, amount: bigint): void { if(amount>s.backing||amount>balance(s.stockBalances,s.vault))fail('InsufficientBacking');s.backing-=amount;s.accountedBacking-=amount; }
+function pullStock(s: State, from: Hex, amount: bigint, failure?: SolidityError): void {
+  // LoanVault's wrapper rejects self-transfers before calling the token.
+  if (from === s.vault) fail('InvalidTokenBalanceDelta',amount,0n);
+  // OZ transferFrom spends allowance before transfer restrictions or balances.
+  const approved = s.stockAllowanceVault[from] ?? 0n;
+  if (approved !== MAX_UINT) {
+    if (approved < amount) fail('ERC20InsufficientAllowance',s.vault,approved,amount);
+    s.stockAllowanceVault[from] = approved - amount;
+  }
+  transfer(s.stockBalances,from,s.vault,amount,failure);
+}
 /** Pure transaction boundary: errors never publish a partly modified state. Token failures are explicit snapshot inputs. */
 export function transition(input: State, a: Action): State {
+  validateAction(a);
   const s=structuredClone(input),r=s.receipt,amount=a.amount??0n;
   if(a.kind==='withdrawPremium'||a.kind==='withdrawCredit'){
     const to=a.to??a.caller;if(to===ZERO_ADDRESS)fail('ZeroAddress');const map=a.kind==='withdrawPremium'?s.premiumCredits:s.cashCredits,available=balance(map,a.caller);
@@ -63,8 +95,13 @@ export function transition(input: State, a: Action): State {
   }
   if(r.status===0n)fail('InvalidReceiptId');
   if(a.kind==='topUp'){
-    if(r.status===3n)fail('ReceiptNotPending');if(a.caller===ZERO_ADDRESS)fail('ZeroAddress');if(amount===0n)fail('ZeroDelivery');
-    s.backing=checked(s.backing+amount);s.accountedBacking=checked(s.accountedBacking+amount);transfer(s.stockBalances,a.caller,s.vault,amount,a.stockFailure);return s;
+    if (r.status === 3n) fail('ReceiptNotPending');
+    if (a.caller === ZERO_ADDRESS) fail('ZeroAddress');
+    if (amount === 0n) fail('ZeroDelivery');
+    s.backing = checked(s.backing + amount);
+    s.accountedBacking = checked(s.accountedBacking + amount);
+    pullStock(s,a.caller,amount,a.stockFailure);
+    return s;
   }
   if(a.kind==='finalize'){
     if(r.status!==2n)fail('ReceiptNotPending');if(s.outstandingUnits!==0n)fail('HandoffIncomplete');
@@ -73,14 +110,33 @@ export function transition(input: State, a: Action): State {
   }
   if(r.status!==1n)fail('ReceiptNotActive');
   if(a.kind==='repay'){
-    const due=debtOf(s,a.now);if(amount===0n||amount>due)fail('InvalidDebtApplied');
-    const approved=s.cashAllowanceManager[a.caller];
-    if(approved!==undefined&&(approved!==MAX_UINT||s.cashDecrementsInfiniteAllowance))s.cashAllowanceManager[a.caller]=checked(approved-amount);
-    transfer(s.cashBalances,a.caller,s.pool,amount,a.cashFailure);reduce(s,amount,a.now);if(amount===due)close(s,a.now);return s;
+    const due = debtOf(s,a.now);
+    if (amount === 0n || amount > due) fail('InvalidDebtApplied');
+    // CoverManager._pullRepayment precedes the MockCashToken transferFrom checks.
+    if (a.caller === s.pool) fail('InvalidTokenBalanceDelta',amount,0n);
+    const approved = s.cashAllowanceManager[a.caller] ?? 0n;
+    if (approved < amount) fail('Error','allowance');
+    if (approved !== MAX_UINT || s.cashDecrementsInfiniteAllowance) {
+      s.cashAllowanceManager[a.caller] = approved - amount;
+    }
+    if (balance(s.cashBalances,a.caller) < amount) fail('Error','balance');
+    transfer(s.cashBalances,a.caller,s.pool,amount,a.cashFailure);
+    reduce(s,amount,a.now);
+    if (amount === due) close(s,a.now);
+    return s;
   }
   if(a.kind==='addCollateral'){
-    if(s.debt.closed)fail('InvalidDebtApplied');if(a.caller===ZERO_ADDRESS)fail('ZeroAddress');const remaining=checked(s.remainingShares+amount);if(remaining>MAX_SHARES)fail('UnsupportedShareAmount');const delivery=units(s,amount);if(delivery===0n)fail('ZeroDelivery');
-    s.remainingShares=remaining;s.backing=checked(s.backing+delivery);s.accountedBacking=checked(s.accountedBacking+delivery);transfer(s.stockBalances,a.caller,s.vault,delivery,a.stockFailure);return s;
+    if (s.debt.closed) fail('InvalidDebtApplied');
+    if (a.caller === ZERO_ADDRESS) fail('ZeroAddress');
+    const remaining = checked(s.remainingShares + amount);
+    if (remaining > MAX_SHARES) fail('UnsupportedShareAmount');
+    const delivery = units(s,amount);
+    if (delivery === 0n) fail('ZeroDelivery');
+    s.remainingShares = remaining;
+    s.backing = checked(s.backing + delivery);
+    s.accountedBacking = checked(s.accountedBacking + delivery);
+    pullStock(s,a.caller,delivery,a.stockFailure);
+    return s;
   }
   if(a.kind==='withdrawCollateral'){
     if(a.caller!==r.consent.borrower)fail('InvalidBorrower');if(a.now>=r.settlementDeadline)fail('SettlementDeadlineReached');if(amount===0n||amount>s.remainingShares)fail('InvalidExerciseShares');

@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ZERO, MAX_TIME } from './params.ts';
 import type { Config, Quote, Receipt } from './types.ts';
+import { SolidityError } from './types.ts';
+import { initialState, transition, type Action } from './state.ts';
 const addr = (n: bigint) => `0x${n.toString(16).padStart(40, '0')}` as const;
 const word = (n: bigint) => `0x${n.toString(16).padStart(64, '0')}` as const;
 export function fixture() {
@@ -18,6 +20,78 @@ test('receipt construction validates deadline funding and exact offer order', as
   assert.equal(r.debtCeiling, 500n); assert.equal(r.startTime, 1n);
   assert.throws(() => constructReceipt(q, config, [], [], [], [], word(10n), 1n, 100n), { name: 'InvalidOfferCount' });
   assert.throws(() => constructReceipt({ ...q, maxSettlementDeadline: 199n }, config, [word(9n)], [word(11n)], [offer], [word(11n)], word(10n), 1n, 100n), { name: 'InvalidSettlementDeadline' });
+});
+
+test('validateBorrow accepts coherent facts and preserves borrower/nonce/expiry precedence', async () => {
+  const { validateBorrow } = await import('./receipt.ts');
+  const { makeOffer } = await import('./offers.ts');
+  const { quoteHash } = await import('./quote.ts');
+  const { q, config } = fixture();
+  const offer = makeOffer(addr(2n), { assetId:q.assetId,policyHash:q.policyHash,snapshotShares:q.totalOfferShares,strike:q.weightedStrike,premium:q.totalPremium,maxBorrowerLtvBps:6000n,referencePrice:q.referencePrice,maxReferenceDeviationBps:0n,expiry:200n,nonce:0n },1n,true,false);
+  const ids=[word(9n)],hashes=[word(11n)],manager=addr(9n);
+  const facts={caller:q.borrower,borrowerNonce:0n,chainId:1n,manager,expectedHash:quoteHash(1n,manager,q,ids,hashes),bindingsMatch:true,effectiveAt:1n,tokenDecimals:18n,configHash:q.configHash,halted:false,phase:1n,scheduledClose:100n,sessionAssetId:q.assetId,activeSessionId:q.sessionId,sessionConfigHash:q.configHash,stateConfigHash:q.configHash,scheduledReportHash:q.scheduledReportHash,actionHash:ZERO,actionN:1n,actionD:1n,eligible:[true]};
+  assert.equal(validateBorrow(q,config,ids,hashes,[offer],hashes,1n,facts).debtCeiling,500n);
+  assert.throws(()=>validateBorrow(q,config,ids,hashes,[offer],hashes,100n,{...facts,caller:addr(8n),borrowerNonce:2n}),{name:'InvalidBorrower'});
+  assert.throws(()=>validateBorrow(q,config,ids,hashes,[offer],hashes,100n,{...facts,borrowerNonce:2n}),{name:'InvalidBorrowerNonce'});
+  assert.throws(()=>validateBorrow(q,config,ids,hashes,[offer],hashes,100n,facts),{name:'QuoteExpired'});
+});
+
+function fundedState() {
+  const { receipt, q } = fixture();
+  const s = initialState(1n, receipt, [], addr(3n), addr(4n), addr(5n));
+  s.cashBalances[q.borrower] = 1000n;
+  s.stockBalances[q.borrower] = 1000n;
+  s.cashAllowanceManager[q.borrower] = 1000n;
+  s.stockAllowanceVault[q.borrower] = 10n;
+  s.cashDecrementsInfiniteAllowance = true;
+  return s;
+}
+
+test('finite stock approvals are spent, max approvals preserved, and insufficient approvals revert atomically', () => {
+  for (const kind of ['addCollateral', 'topUp'] as const) {
+    const s = fundedState(), before = structuredClone(s), caller = s.receipt.consent.borrower;
+    const result = transition(s, { kind, now: 2n, caller, amount: 4n });
+    assert.equal(result.stockAllowanceVault[caller], 6n);
+    assert.throws(() => transition(s, { kind, now: 2n, caller, amount: 11n }), { name: 'ERC20InsufficientAllowance', args: [s.vault, 10n, 11n] });
+    assert.throws(() => transition(s, { kind, now: 2n, caller, amount: 11n, stockFailure: new SolidityError('TransfersPaused') }), { name: 'ERC20InsufficientAllowance' });
+    assert.deepEqual(s, before);
+    s.stockAllowanceVault[caller] = (1n << 256n) - 1n;
+    assert.equal(transition(s, { kind, now: 2n, caller, amount: 4n }).stockAllowanceVault[caller], (1n << 256n) - 1n);
+  }
+});
+
+test('repay follows wrapper, allowance, token failure ordering and exact string errors', () => {
+  const s = fundedState(), caller = s.receipt.consent.borrower;
+  s.cashAllowanceManager[caller] = 3n;
+  const before = structuredClone(s);
+  assert.throws(() => transition(s, { kind: 'repay', now: 2n, caller, amount: 4n }), { name: 'Error', args: ['allowance'] });
+  assert.throws(() => transition(s, { kind: 'repay', now: 2n, caller: s.pool, amount: 4n, cashFailure: new SolidityError('CashDebtTransition') }), { name: 'InvalidTokenBalanceDelta', args: [4n, 0n] });
+  assert.throws(() => transition(s, { kind: 'repay', now: 2n, caller, amount: 3n, cashFailure: new SolidityError('CashDebtTransition') }), { name: 'CashDebtTransition' });
+  assert.deepEqual(s, before);
+  assert.equal(transition(s, { kind: 'repay', now: 2n, caller, amount: 3n }).cashAllowanceManager[caller], 0n);
+});
+
+test('public transition rejects noncanonical ABI domains before touching state', () => {
+  const s = fundedState(), before = structuredClone(s);
+  const base: Action = { kind: 'topUp', now: 2n, caller: s.receipt.consent.borrower, amount: 1n };
+  for (const field of ['now', 'amount', 'claimId'] as const) {
+    for (const invalid of [-1n, 1n << 256n, 1, '1']) {
+      assert.throws(() => transition(s, { ...base, [field]: invalid } as Action), TypeError);
+    }
+  }
+  for (const field of ['caller', 'to'] as const) {
+    for (const invalid of ['0x1', '0x' + 'A'.repeat(40), 1n]) {
+      assert.throws(() => transition(s, { ...base, [field]: invalid } as Action), TypeError);
+    }
+  }
+  const b = { finalized: true, assetId: word(1n), sessionId: word(2n), configHash: word(3n), reportHash: word(4n), price: 1n, multiplierNumerator: 1n, multiplierDenominator: 1n };
+  for (const field of ['multiplierNumerator', 'multiplierDenominator'] as const) {
+    assert.throws(() => transition(s, { ...base, benchmark: { ...b, [field]: 1n << 128n } }), TypeError);
+    assert.throws(() => transition(s, { ...base, benchmark: { ...b, [field]: -1n } }), TypeError);
+  }
+  assert.throws(() => transition(s, { ...base, benchmark: { ...b, price: -1n } }), TypeError);
+  assert.throws(() => transition(s, { ...base, benchmark: { ...b, reportHash: '0x12' } }), TypeError);
+  assert.deepEqual(s, before);
 });
 test('claim conversion floors once, permits zero-unit recorded claims and rejects invalid multipliers', async () => {
   const { convertedUnits } = await import('./claims.ts');
