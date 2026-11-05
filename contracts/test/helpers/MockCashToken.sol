@@ -12,6 +12,7 @@ contract MockCashToken {
     bool public shortTransferFrom;
     bool public shortTransfer;
     bool public failTransfer;
+    uint256 public senderFee;
     address public transferHookTarget;
     bytes public transferHookData;
 
@@ -65,14 +66,19 @@ contract MockCashToken {
         failTransfer = enabled;
     }
 
+    function setSenderFee(uint256 fee) external {
+        senderFee = fee;
+    }
+
     function setTransferHook(address target, bytes calldata data) external {
         transferHookTarget = target;
         transferHookData = data;
     }
 
     function _move(address from, address to, uint256 amount) private {
-        require(balanceOf[from] >= amount, "balance");
-        balanceOf[from] -= amount;
+        uint256 debited = amount + senderFee;
+        require(balanceOf[from] >= debited, "balance");
+        balanceOf[from] -= debited;
         balanceOf[to] += amount;
         emit Transfer(from, to, amount);
     }

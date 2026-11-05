@@ -283,16 +283,28 @@ contract CommitmentBook is ReentrancyGuard {
     }
 
     function _pullExact(address from, uint256 amount) private {
-        uint256 beforeBalance = cashToken.balanceOf(address(this));
+        if (from == address(this)) revert Errors.InvalidTokenBalanceDelta(amount, 0);
+        uint256 senderBefore = cashToken.balanceOf(from);
+        uint256 recipientBefore = cashToken.balanceOf(address(this));
         cashToken.safeTransferFrom(from, address(this), amount);
-        uint256 received = cashToken.balanceOf(address(this)) - beforeBalance;
+        uint256 senderAfter = cashToken.balanceOf(from);
+        uint256 recipientAfter = cashToken.balanceOf(address(this));
+        uint256 spent = senderBefore >= senderAfter ? senderBefore - senderAfter : 0;
+        uint256 received = recipientAfter >= recipientBefore ? recipientAfter - recipientBefore : 0;
+        if (spent != amount) revert Errors.InvalidTokenBalanceDelta(amount, spent);
         if (received != amount) revert Errors.InvalidTokenBalanceDelta(amount, received);
     }
 
     function _pushExact(address to, uint256 amount) private {
-        uint256 beforeBalance = cashToken.balanceOf(to);
+        if (to == address(this)) revert Errors.InvalidTokenBalanceDelta(amount, 0);
+        uint256 senderBefore = cashToken.balanceOf(address(this));
+        uint256 recipientBefore = cashToken.balanceOf(to);
         cashToken.safeTransfer(to, amount);
-        uint256 received = cashToken.balanceOf(to) - beforeBalance;
+        uint256 senderAfter = cashToken.balanceOf(address(this));
+        uint256 recipientAfter = cashToken.balanceOf(to);
+        uint256 spent = senderBefore >= senderAfter ? senderBefore - senderAfter : 0;
+        uint256 received = recipientAfter >= recipientBefore ? recipientAfter - recipientBefore : 0;
+        if (spent != amount) revert Errors.InvalidTokenBalanceDelta(amount, spent);
         if (received != amount) revert Errors.InvalidTokenBalanceDelta(amount, received);
     }
 

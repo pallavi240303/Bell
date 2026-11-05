@@ -116,6 +116,28 @@ contract CommitmentBookTest is Test {
         assertEq(cash.balanceOf(address(book)), 0);
     }
 
+    function testPostRejectsSenderSideFeeWithoutChargingBuyerOrSpendingNonce() public {
+        Types.OfferTerms memory terms = _terms(8);
+        bytes32 expectedId = book.computeOfferId(BUYER, terms.nonce);
+        uint256 buyerBefore = cash.balanceOf(BUYER);
+        uint256 allowanceBefore = cash.allowance(BUYER, address(book));
+        uint256 bookBefore = cash.balanceOf(address(book));
+        uint256 liabilitiesBefore = book.totalLiabilities();
+        cash.setSenderFee(1);
+
+        vm.prank(BUYER);
+        vm.expectRevert();
+        book.postOffer(terms);
+
+        assertEq(cash.balanceOf(BUYER), buyerBefore);
+        assertEq(cash.allowance(BUYER, address(book)), allowanceBefore);
+        assertEq(cash.balanceOf(address(book)), bookBefore);
+        assertFalse(book.nonceUsed(BUYER, terms.nonce));
+        assertEq(uint8(book.getOffer(expectedId).status), uint8(Types.OfferStatus.NONE));
+        assertEq(book.totalLockedCash(), 0);
+        assertEq(book.totalLiabilities(), liabilitiesBefore);
+    }
+
     function testPostRejectsInvalidTermsAndIneligibleBuyer() public {
         Types.OfferTerms memory terms = _terms(1);
         terms.assetId = bytes32(0);
@@ -303,6 +325,33 @@ contract CommitmentBookTest is Test {
         assertEq(book.totalPremiumCredits(), 0);
     }
 
+    function testReserveRejectsSenderSidePremiumFeeAtomically() public {
+        Types.OfferTerms memory terms = _terms(1);
+        bytes32 offerId = _post(BUYER, terms);
+        bytes32 termsHash = book.termsHashOf(offerId);
+        uint256 payerBefore = cash.balanceOf(BORROWER);
+        uint256 allowanceBefore = cash.allowance(BORROWER, address(book));
+        uint256 bookBefore = cash.balanceOf(address(book));
+        uint256 lockedBefore = book.totalLockedCash();
+        uint256 liabilitiesBefore = book.totalLiabilities();
+        cash.setSenderFee(1);
+
+        vm.prank(MANAGER);
+        vm.expectRevert();
+        book.reserveOffer(offerId, termsHash, 1, BORROWER, terms.expiry, terms.referencePrice, terms.maxBorrowerLtvBps);
+
+        Types.Offer memory offer = book.getOffer(offerId);
+        assertEq(uint8(offer.status), uint8(Types.OfferStatus.FREE));
+        assertEq(offer.receiptId, 0);
+        assertEq(cash.balanceOf(BORROWER), payerBefore);
+        assertEq(cash.allowance(BORROWER, address(book)), allowanceBefore);
+        assertEq(cash.balanceOf(address(book)), bookBefore);
+        assertEq(book.totalLockedCash(), lockedBefore);
+        assertEq(book.premiumCredit(BUYER), 0);
+        assertEq(book.totalPremiumCredits(), 0);
+        assertEq(book.totalLiabilities(), liabilitiesBefore);
+    }
+
     function testExerciseAndReleaseAreManagerOnly() public {
         Types.OfferTerms memory terms = _terms(1);
         bytes32 offerId = _post(BUYER, terms);
@@ -430,6 +479,32 @@ contract CommitmentBookTest is Test {
         assertEq(cash.balanceOf(POOL), 0);
     }
 
+    function testSenderSideFeeExerciseRevertsAtomicallyEvenWithDonatedSurplus() public {
+        Types.OfferTerms memory terms = _terms(1);
+        bytes32 offerId = _post(BUYER, terms);
+        _reserve(offerId, 1, terms.referencePrice, 6_500);
+        cash.mint(address(book), 1);
+
+        uint256 bookBefore = cash.balanceOf(address(book));
+        uint256 lockedBefore = book.totalLockedCash();
+        uint256 liabilitiesBefore = book.totalLiabilities();
+        uint256 poolBefore = cash.balanceOf(POOL);
+        cash.setSenderFee(1);
+
+        vm.prank(MANAGER);
+        vm.expectRevert();
+        book.exerciseOffer(offerId, SHARE_SCALE, 100_000_000, BORROWER);
+
+        Types.Offer memory offer = book.getOffer(offerId);
+        assertEq(offer.cumulativeExercisedShares, 0);
+        assertEq(offer.cumulativeCashCharged, 0);
+        assertEq(book.totalLockedCash(), lockedBefore);
+        assertEq(book.cashCredit(BORROWER), 0);
+        assertEq(book.totalLiabilities(), liabilitiesBefore);
+        assertEq(cash.balanceOf(address(book)), bookBefore);
+        assertEq(cash.balanceOf(POOL), poolBefore);
+    }
+
     function testCreditLedgersAreSeparatedAndWithdrawalsAreAtomic() public {
         Types.OfferTerms memory terms = _terms(1);
         bytes32 offerId = _post(BUYER, terms);
@@ -464,6 +539,30 @@ contract CommitmentBookTest is Test {
         assertEq(book.premiumCredit(BUYER), 0);
         assertEq(book.cashCredit(BUYER), book.getOffer(offerId).cashCapacity);
         _assertFullyCovered();
+    }
+
+    function testSenderSideFeeWithdrawalRevertsAtomicallyEvenWithDonatedSurplus() public {
+        bytes32 offerId = _post(BUYER, _terms(1));
+        vm.prank(BUYER);
+        book.cancelOffer(offerId);
+        cash.mint(address(book), 1);
+
+        uint256 creditBefore = book.cashCredit(BUYER);
+        uint256 totalCreditsBefore = book.totalCashCredits();
+        uint256 bookBefore = cash.balanceOf(address(book));
+        uint256 liabilitiesBefore = book.totalLiabilities();
+        uint256 recipientBefore = cash.balanceOf(RECIPIENT);
+        cash.setSenderFee(1);
+
+        vm.prank(BUYER);
+        vm.expectRevert();
+        book.withdrawCashCredit(creditBefore, RECIPIENT);
+
+        assertEq(book.cashCredit(BUYER), creditBefore);
+        assertEq(book.totalCashCredits(), totalCreditsBefore);
+        assertEq(book.totalLiabilities(), liabilitiesBefore);
+        assertEq(cash.balanceOf(address(book)), bookBefore);
+        assertEq(cash.balanceOf(RECIPIENT), recipientBefore);
     }
 
     function testReentrantWithdrawalRevertsAndRestoresCredit() public {
