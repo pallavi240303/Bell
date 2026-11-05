@@ -9,11 +9,12 @@
     "lint": "npm run typecheck",
     "build": "npm run typecheck && forge build",
     "typecheck": "tsc --noEmit",
-    "test": "npm run test:unit",
+    "test": "npm run test:unit && npm run test:engine",
     "test:unit": "node --import tsx --test tests/unit/*.test.ts",
     "test:integration": "node scripts/not-implemented.mjs integration",
     "test:e2e": "node scripts/not-implemented.mjs e2e",
-    "verify:parity": "node scripts/not-implemented.mjs parity",
+    "test:engine": "node --import tsx --test engine/*.test.ts",
+    "verify:parity": "npm run test:engine && forge test --match-path contracts/test/differential/EngineDiff.t.sol",
     "verify:replay": "node scripts/not-implemented.mjs replay",
     "verify:workspace": "npm run typecheck && forge build && npm run test:unit",
     "verify": "npm run format:check && npm run build && npm run test:unit && npm run test:integration && npm run test:e2e && npm run verify:parity && npm run verify:replay"
@@ -25,5 +26,8 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "viem": "2.38.5"
   }
 }

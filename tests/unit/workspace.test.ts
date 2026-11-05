@@ -57,7 +57,7 @@ test('environment example is empty and runtime outputs are ignored', () => {
 });
 
 test('unimplemented verification stages fail with an actionable message', () => {
-  for (const stage of ['test:integration', 'test:e2e', 'verify:parity', 'verify:replay']) {
+  for (const stage of ['test:integration', 'test:e2e', 'verify:replay']) {
     const result = run('npm', ['run', stage]);
     assert.equal(result.status, 1, `${stage}: ${result.stdout}${result.stderr}`);
     assert.match(result.stderr, /not implemented.*package/i);

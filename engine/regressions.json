@@ -1,0 +1,24 @@
+{
+  "schema": "bell-engine-regressions-v1",
+  "seed": "11735312",
+  "cases": [
+    {
+      "id": "empty-error-arguments",
+      "input": { "op": "mulDivDown", "args": ["98188275941949707266510487153985852507409048842218278213223832116586893527373", "115792089237316195423570985008687907853269984665640564039457584007913129639935", "0"] },
+      "expected": { "name": "ZeroDenominator", "args": [], "data": "0x1d1e6f5b" },
+      "mismatch": "Batch failed while parsing an empty ABI schema instead of returning the Solidity error selector."
+    },
+    {
+      "id": "reserved-abi-field-name",
+      "input": { "schema": "(bool ok,bytes error,bytes32 stateHash)[]", "seed": "12689680", "scenario": "0" },
+      "expected": { "schema": "(bool ok,bytes revertData,bytes32 stateHash)[]" },
+      "mismatch": "The canonical ABI parser rejects the protected Solidity keyword error as a tuple field name. Renaming the transport field preserves encoded bytes."
+    },
+    {
+      "id": "cash-token-infinite-allowance",
+      "input": { "lifecycleSeed": "12689680", "scenario": "0", "step": "6", "principal": "115985608", "repayment": "15985609", "allowance": "115792089237316195423570985008687907853269984665640564039457584007913129639935" },
+      "expected": "MockCashToken decrements allowance even at uint256 maximum; the full observable snapshot must include this decrement.",
+      "mismatch": "All financial outputs agreed but the post-repayment full-state hash differed because the test cash token's allowance semantics were omitted."
+    }
+  ]
+}
