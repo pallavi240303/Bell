@@ -56,7 +56,7 @@ Commits may be split more finely when a change cannot remain reviewable as one u
 **Files**
 
 - Create root `package.json`, lockfile, TypeScript configuration, `.env.example`, and contributor commands.
-- Create `contracts/foundry.toml`, `contracts/remappings.txt`, and pinned dependency configuration.
+- Create root `foundry.toml`, root `remappings.txt`, and pinned contract dependency configuration for sources under `contracts/`.
 - Create empty package boundaries for `engine/`, `services/keeper/`, `cre/`, `src/`, `scripts/`, and `tests/`.
 - Create repository scripts for format, lint, build, unit, integration, and full verification.
 
