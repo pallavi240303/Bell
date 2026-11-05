@@ -37,4 +37,17 @@ library Errors {
     error MissingSourceEvidence();
     error UnsupportedCorporateAction(Types.CorporateAction action);
     error ZeroActionId();
+    error ZeroDenominator();
+    error MathResultOverflow();
+    error UnsupportedCashAmount();
+    error UnsupportedShareAmount();
+    error UnsupportedPrice();
+    error UnsupportedRate();
+    error InvalidTimeRange();
+    error CumulativeSharesDecrease();
+    error ZeroStrike();
+    error InvalidLotShares();
+    error InvalidSettlementLtv();
+    error TooManyFills(uint256 count);
+    error InsufficientFundedCapacity(uint256 availableCash, uint256 requiredCash);
 }
