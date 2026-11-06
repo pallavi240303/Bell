@@ -1,5 +1,6 @@
 import {artifact,contracts} from './abi.ts';
-import {integers,type Deployment,type Header,type Hex} from './types.ts';
+import {integers,rawUint,type Deployment,type Header,type Hex} from './types.ts';
+import type {Indexer} from './indexer.ts';
 export async function coherent<T>(rpc:any,read:(block:Header)=>Promise<T>,at?:Header):Promise<{block:Header;state:T}>{
   const block=at??await rpc.getBlock({blockTag:'latest'});if(!block?.hash)throw Error('canonical block unavailable');
   if(at&&(await rpc.getBlock({blockNumber:block.number})).hash!==block.hash)throw Error('source block replaced');
@@ -7,13 +8,27 @@ export async function coherent<T>(rpc:any,read:(block:Header)=>Promise<T>,at?:He
   if((await rpc.getBlock({blockNumber:block.number})).hash!==block.hash)throw Error('source block replaced during reads');
   return {block:{number:block.number,hash:block.hash,timestamp:block.timestamp,...(block.parentHash?{parentHash:block.parentHash}:{})},state};
 }
+/** Capture one committed discovery boundary, then read only that canonical block. */
+export async function indexedState(index:Pick<Indexer,'store'|'sync'>,rpc:any,watch:Hex[]=[]){
+  await index.sync();const blocks=index.store.data.blocks.slice(),last=blocks.at(-1);
+  if(!last)throw Error('no indexed deployment block');
+  const block:Header={number:rawUint(last.header.number),hash:last.header.hash as Hex,timestamp:rawUint(last.header.timestamp)};
+  const logs=blocks.flatMap(b=>b.logs),offers=logs.filter(l=>l.decoded?.eventName==='OfferPosted').map(l=>l.decoded.args.offerId as Hex);
+  return snapshot(rpc,index.store.deployment,watch,offers,block,logs);
+}
 /** Logs discover immutable identifiers only; every financial projection is refreshed from contract reads. */
 export async function snapshot(rpc:any,d:Deployment,watch:Hex[]=[],offerIds:Hex[]=[],at?:Header,discoveryLogs:any[]=[]){
   return coherent(rpc,async(block)=>{
     const read=async(c:string,f:string,args:unknown[]=[])=>integers(await rpc.readContract({address:d.addresses[c],abi:artifact(contracts[c]!).abi,functionName:f,args,blockNumber:block.number}));
     const receipts:Record<string,any>={},offers:Record<string,any>={},claims:Record<string,any>={},actors=new Set(watch.map(a=>a.toLowerCase()));
     const assetIds=new Set<string>(),sessionIds=new Set<string>();
-    for(const log of discoveryLogs){const args=log.decoded?.args;if(args?.assetId)assetIds.add(args.assetId);if(args?.sessionId&&args.sessionId!==`0x${'0'.repeat(64)}`)sessionIds.add(args.sessionId);}
+    const deploymentAddresses=new Set(Object.values(d.addresses).map(a=>a.toLowerCase()));
+    const actorFields=['borrower','buyer','owner','payer','from','to','account','beneficiary','recipient','spender'];
+    for(const log of discoveryLogs){
+      if(!deploymentAddresses.has(String(log.address).toLowerCase()))continue;
+      const args=log.decoded?.args;if(args?.assetId)assetIds.add(args.assetId);if(args?.sessionId&&args.sessionId!==`0x${'0'.repeat(64)}`)sessionIds.add(args.sessionId);
+      for(const field of actorFields){const actor=args?.[field];if(typeof actor==='string'&&/^0x[0-9a-fA-F]{40}$/.test(actor)&&!/^0x0{40}$/i.test(actor))actors.add(actor.toLowerCase());}
+    }
     Object.values(d.addresses).forEach(a=>actors.add(a.toLowerCase()));
     const nextReceiptId:bigint=await read('manager','nextReceiptId');
     const ids=new Set<Hex>(offerIds);

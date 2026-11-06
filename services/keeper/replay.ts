@@ -4,7 +4,7 @@ import {encodeAbiParameters,encodeFunctionData,decodeEventLog,encodeErrorResult,
 import {artifact,fn,argsFor,contracts} from './abi.ts';
 import {snapshot} from './state.ts';
 import {prepareActor,prepareSettlement} from './transactions.ts';
-import {raw,rawUint,integers,type Deployment} from './types.ts';
+import {raw,rawUint,integers,exactKeys,type Deployment} from './types.ts';
 import {digest,writeEvidence,assertSafe,conservation} from './evidence.ts';
 import {localNode,deployLocal} from '../../scripts/keeper-local.ts';
 import {transition,debtOf,type State,type Action} from '../../engine/state.ts';
@@ -12,6 +12,21 @@ import {constructReceipt} from '../../engine/receipt.ts';
 import {SolidityError} from '../../engine/types.ts';
 const zero=`0x${'0'.repeat(64)}` as Hex;
 const hashLabel=(label:string)=>keccak256(toHex(label));
+
+const reportFields=['reference','kind','assetId','sessionId','observedAt','validUntil','scheduledOpen','scheduledClose','benchmarkPrice','corporateAction','actionId','multiplierNumerator','multiplierDenominator','halted','primarySourceHash','secondarySourceHash'];
+interface ReportDomain {chainId:string;oracle:Address;configHash:Hex;nonce:string;previousStateHash:Hex}
+/** This replay supports session reports only. Unsupported facts are rejected, never overwritten. */
+export function bindReport(fact:Record<string,unknown>,domain:ReportDomain){
+  if(!fact||typeof fact!=='object'||Array.isArray(fact))throw Error('report facts required');
+  exactKeys(fact,reportFields);for(const field of reportFields)if(!Object.hasOwn(fact,field))throw Error(`report fact required: ${field}`);
+  if(typeof fact.reference!=='string'||fact.reference.length===0)throw Error('report reference required');
+  if(!['1','2','3'].includes(fact.kind as string))throw Error('unsupported report kind');
+  if(fact.corporateAction!=='0'||fact.actionId!==zero)throw Error('unsupported corporate-action facts for a session report');
+  const {reference,...facts}=fact;
+  const input={schemaVersion:'1',...facts,...domain};
+  const parsed=argsFor('SessionOracle','acceptReport',[input])[0];
+  return {reference,input,payload:encodeAbiParameters(fn('SessionOracle','acceptReport').inputs,[parsed])};
+}
 
 /** Explicitly one-receipt verification adapter. Never used as the indexer's state source. */
 function engineState(s:any,d:Deployment):State {
@@ -31,6 +46,9 @@ function decodedEvents(logs:readonly any[],d:Deployment){return logs.map(log=>{
 
 export async function runReplay(input:any,scenario:any){
   assertSafe(input);assertSafe(scenario);
+  // Validate every supplied report before creating an isolated node or making any transaction.
+  if(!Array.isArray(input.reports)||input.reports.length!==3)throw Error('three explicit session reports required');
+  for(const fact of input.reports)bindReport(fact,{chainId:'31337',oracle:'0x0000000000000000000000000000000000000001',configHash:zero,nonce:'1',previousStateHash:zero});
   const node=await localNode();
   try{
     const actors=input.actors as Record<string,Address>;assert.equal(new Set(Object.values(actors)).size,Object.values(actors).length,'distinct actor addresses required');
@@ -47,13 +65,13 @@ export async function runReplay(input:any,scenario:any){
       transactions.push({label,actor:from,to:a[c],data,simulation:simulation.data??'0x',transactionHash:receipt.transactionHash,receipt:integers(receipt),block:{number:after.number,hash:after.hash,timestamp:after.timestamp},events,before,after:await observe()});return receipt;
     };
     const actor=async(from:Address,c:string,method:string,args:any[])=>{
-      const before=await observe(),block=before.block;const tx=prepareActor(d,block,{chainId:d.chainId,from,contract:c,method,args:raw(args)});
+      const before=await observe(),block=before.block;const tx=await prepareActor(d,block,{chainId:d.chainId,from,contract:c,method,args:raw(args)},node.client);
       const simulation=await node.client.call({account:from,to:tx.to,data:tx.data,blockNumber:block.number});const receipt=await node.send(from,tx.to,tx.data);
       const events=decodedEvents(receipt.logs,d);for(const event of events)if(event.decoded?.eventName==='OfferPosted')trackedOffers.push(event.decoded.args.offerId);
       transactions.push({label:method,...tx,actor:from,simulation:simulation.data??'0x',transactionHash:receipt.transactionHash,receipt:integers(receipt),events,before,after:await observe()});return receipt;
     };
     const approve=async(from:Address,purpose:string)=>{
-      const before=await observe(),block=before.block;const tx=prepareActor(d,block,{chainId:d.chainId,from,approval:purpose,amount:input.approvalAmount});const simulation=await node.client.call({account:from,to:tx.to,data:tx.data,blockNumber:block.number});const receipt=await node.send(from,tx.to,tx.data);transactions.push({label:`approve-${purpose}`,...tx,actor:from,simulation:simulation.data??'0x',transactionHash:receipt.transactionHash,receipt:integers(receipt),events:decodedEvents(receipt.logs,d),before,after:await observe()});
+      const before=await observe(),block=before.block;const tx=await prepareActor(d,block,{chainId:d.chainId,from,approval:purpose,amount:input.approvalAmount},node.client);const simulation=await node.client.call({account:from,to:tx.to,data:tx.data,blockNumber:block.number});const receipt=await node.send(from,tx.to,tx.data);transactions.push({label:`approve-${purpose}`,...tx,actor:from,simulation:simulation.data??'0x',transactionHash:receipt.transactionHash,receipt:integers(receipt),events:decodedEvents(receipt.logs,d),before,after:await observe()});
     };
     const assetId=hashLabel(input.assetLabel),sessionId=hashLabel(input.sessionLabel),policyHash=hashLabel(input.policyLabel);
     const config=argsFor('AssetRegistry','scheduleAssetConfig',[assetId,{...input.config,assetToken:a.stock},input.effectiveAt])[1];
@@ -62,8 +80,7 @@ export async function runReplay(input:any,scenario:any){
     const report=async(fact:any)=>{
       await node.time(rawUint(fact.observedAt,64));const state=await read('oracle','assetState',[assetId]);
       // Only deployment identity and nonce linkage are bound here. All market facts come from the supplied input.
-      const supplied={schemaVersion:'1',kind:fact.kind,chainId:d.chainId,oracle:a.oracle,assetId,sessionId,configHash,nonce:state.nextNonce.toString(),previousStateHash:state.stateHash,observedAt:fact.observedAt,validUntil:fact.validUntil,scheduledOpen:fact.scheduledOpen,scheduledClose:fact.scheduledClose,benchmarkPrice:fact.benchmarkPrice,corporateAction:'0',actionId:zero,multiplierNumerator:fact.multiplierNumerator,multiplierDenominator:fact.multiplierDenominator,halted:false,primarySourceHash:hashLabel(fact.primarySourceLabel),secondarySourceHash:fact.secondarySourceLabel?hashLabel(fact.secondarySourceLabel):zero};
-      const parsed=argsFor('SessionOracle','acceptReport',[supplied])[0],payload=encodeAbiParameters(fn('SessionOracle','acceptReport').inputs,[parsed]);
+      const {input:supplied,payload}=bindReport(fact,{chainId:d.chainId,oracle:a.oracle!,configHash,nonce:state.nextNonce.toString(),previousStateHash:state.stateHash});
       const receipt=await send(actors.owner!,'receiver','onReport',['0x',payload],fact.reference);
       reports.push({reference:fact.reference,input:supplied,payload,hash:keccak256(payload),transactionHash:receipt.transactionHash});
     };
@@ -91,11 +108,11 @@ export async function runReplay(input:any,scenario:any){
       const action:Action={kind:method==='settle'?'settle':'terminal',caller:actors.keeper!,now:before.block.timestamp,benchmark:r.benchmark};
       let predicted:State|undefined,expected:Hex|undefined;
       try{predicted=transition(engineState(before.state,d),action);}catch(error){if(!(error instanceof SolidityError))throw error;expected=encodeErrorResult({abi:artifact('CoverManager').abi,errorName:error.name,args:error.args});}
-      const tx=prepareSettlement(d,before.block,actors.keeper!,1n,method);
+      const tx=await prepareSettlement(d,before.block,actors.keeper!,1n,method,node.client);
       let simulation:Hex|undefined,actualError:Hex|undefined;
       try{simulation=(await node.client.call({account:tx.from,to:tx.to,data:tx.data,blockNumber:before.block.number})).data??'0x';}catch(error){actualError=errorBytes(error);if(!actualError)throw error;}
       assert.equal(actualError,expected,'exact simulation/revert parity');assert.equal(Boolean(expected),expectRevert,'requested action result');
-      if(expected){const after=await snapshot(node.client,d,Object.values(actors),ids);assert.deepEqual(after,before,'reverted simulation changes no state');expectedReverts.push({method,...tx,action,data:actualError,expected,before,after});return;}
+      if(expected){const after=await snapshot(node.client,d,Object.values(actors),ids);assert.deepEqual(after,before,'reverted simulation changes no state');expectedReverts.push({method,...tx,action,revertData:actualError,expectedRevertData:expected,before,after});return;}
       const receipt=await node.send(tx.from,tx.to,tx.data);const after=await snapshot(node.client,d,Object.values(actors),ids);
       assert.deepEqual(engineState(after.state,d),predicted,'exact full observable lifecycle parity');assert.equal(after.state.receipts['1'].debt,debtOf(predicted!,after.block.timestamp));assert.equal(before.state.pool.totalSupply,after.state.pool.totalSupply);
       const conserved=conservation({timestamp:before.block.timestamp,pool:before.state.balances[a.pool!].cash,book:before.state.balances[a.book!].cash,debt:r.debt},{timestamp:after.block.timestamp,pool:after.state.balances[a.pool!].cash,book:after.state.balances[a.book!].cash,debt:after.state.receipts['1'].debt});

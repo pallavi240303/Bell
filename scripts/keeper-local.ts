@@ -35,5 +35,5 @@ export async function deployLocal(node:Awaited<ReturnType<typeof localNode>>){
   await deploy('book',[addresses.cash,addresses.eligibility,owner]);await deploy('pool',[addresses.cash,owner]);await deploy('vault',[owner]);await deploy('manager',[addresses.registry,addresses.oracle,addresses.book,addresses.pool,addresses.vault]);await deploy('receiver',[addresses.oracle,owner]);
   for(const [key,method,args]of [['book','initialize',[addresses.manager,addresses.pool]],['pool','initialize',[addresses.manager]],['vault','initialize',[addresses.manager]],['oracle','bindReceiver',[addresses.receiver]]] as const){receipts.push(await node.send(owner,addresses[key]!,encodeFunctionData({abi:artifact(contracts[key]!).abi,functionName:method,args})));}
   const codeHashes:Record<string,Hex>={};for(const [key,address]of Object.entries(addresses))codeHashes[key]=keccak256((await node.client.getCode({address}))!);
-  const deployment:Deployment={chainId:'31337',deploymentBlock:'1',addresses,codeHashes};return {deployment,receipts};
+  const deployment:Deployment={chainId:'31337',deploymentBlock:'1',addresses:addresses as Deployment['addresses'],codeHashes:codeHashes as Deployment['codeHashes']};return {deployment,receipts};
 }

@@ -11,6 +11,38 @@ import {Indexer} from '../indexer.ts';
 import {snapshot} from '../state.ts';
 import {verifyDeployment} from '../config.ts';
 
+test('API state never combines new config discovery or reorg identifiers with a different block',async()=>{
+  const state=await import('../state.ts') as any;assert.equal(typeof state.indexedState,'function','indexed API state is required');
+  const node=await localNode();try{
+    const {deployment:d}=await deployLocal(node);d.deploymentBlock=(await node.client.getBlockNumber()).toString();
+    const store=new Store(join(mkdtempSync(join(tmpdir(),'bell-api-block-')),'store.json'),d);
+    const index=new Indexer(store,node.client,(block,logs,history)=>snapshot(node.client,d,[],[],block,[...history.flatMap(b=>b.logs),...logs]));await index.sync();
+    const old=store.data.cursor!,checkpoint=await node.request('evm_snapshot');const asset=keccak256(toHex('AFTER-SYNC'));
+    await node.send(node.actors[0]!,d.addresses.registry!,encodeFunctionData({abi:artifact('AssetRegistry').abi,functionName:'scheduleAssetConfig',args:[asset,{assetToken:d.addresses.stock,stockTokenDecimals:18,cashTokenDecimals:6,originationLtvBps:6000,targetLtvBps:6500,triggerLtvBps:7500,rateNumerator:1,rateDenominator:18446744073709551615n,maxFills:8,maxActiveReceipts:32,supportedCorporateActions:6},1001n]}));
+    // A new config lands after this request's sync completed. Its reads must stay at that sync's block.
+    const priorSync={store,sync:async()=>{}};const response=await state.indexedState(priorSync,node.client);
+    assert.equal(response.block.number.toString(),old.blockNumber);assert.equal(response.block.hash,old.blockHash);assert.equal(response.state.assets[asset],undefined);
+    const advanced=await state.indexedState(index,node.client);assert.ok(advanced.state.assets[asset]);assert.equal(advanced.block.hash,store.data.cursor!.blockHash);
+    await node.request('evm_revert',[checkpoint]);await node.time(1002n);
+    await assert.rejects(()=>state.indexedState(priorSync,node.client),/replaced/);
+    const repaired=await state.indexedState(index,node.client);assert.equal(repaired.state.assets[asset],undefined);assert.equal(repaired.block.hash,store.data.cursor!.blockHash);
+  }finally{await node.stop();}
+});
+
+test('deposit-only lenders and later pool share recipients are discovered without a watch list',async()=>{
+  const node=await localNode();try{
+    const {deployment:d}=await deployLocal(node);d.deploymentBlock=(await node.client.getBlockNumber()).toString();const lender=node.actors[1]!,recipient=node.actors[2]!,watched=node.actors[3]!;
+    const store=new Store(join(mkdtempSync(join(tmpdir(),'bell-actors-')),'store.json'),d);
+    const index=new Indexer(store,node.client,(block,logs,history)=>snapshot(node.client,d,[],[],block,[...history.flatMap(b=>b.logs),...logs]));
+    const send=async(c:string,method:string,args:any[])=>node.send(lender,d.addresses[c]!,encodeFunctionData({abi:artifact(c==='pool'?'ProtectedPool':'MockCashToken').abi,functionName:method,args}));
+    await send('cash','mint',[lender,1000000n]);await send('cash','approve',[d.addresses.pool,1000000n]);await send('pool','deposit',[1000000n]);await index.sync();
+    assert.ok(store.data.blocks.at(-1)!.projection.state.balances[lender],'deposit-only lender must be discovered');
+    await send('pool','transfer',[recipient,1n]);await index.sync();const last=store.data.blocks.at(-1)!;
+    assert.equal(last.projection.state.balances[recipient].poolShares,'1');assert.equal(last.projection.block.hash,last.header.hash);
+    const current=await snapshot(node.client,d,[watched]);assert.ok(current.state.balances[watched],'explicit watch remains supported');
+  }finally{await node.stop();}
+});
+
 test('real pool deposit and empty block refresh, Anvil reorg rollback, code identity and restart',async()=>{
   const node=await localNode();
   try{
