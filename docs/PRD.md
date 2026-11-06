@@ -4,343 +4,190 @@
 
 **DeFi collateralizes the loan. BELL collateralizes the liquidation.**
 
-BELL is a pre-funded liquidation commitment layer for tokenized-asset lending. A borrower receives a covered loan only when buyers have already locked enough USDC to repay the lender through the protected session. Buyers choose the strike, premium, exposure, and risk limits they are willing to accept. Chainlink CRE verifies the market event. BELL contracts perform every monetary calculation and settlement. Arc is the execution and settlement network.
+BELL is a lending market with optional, pre-funded fixed-strike cover for tokenized assets. A borrower can borrow normally without offers or a premium, then attach fully funded session cover to that same eligible loan during its cover window. Buyers choose the strike, premium, exposure and risk limits they accept. Chainlink CRE authenticates external market facts; contracts perform every monetary calculation. Arc executes and settles transactions.
 
-## Problem
+This document incorporates the binding [optional-cover correction](OPTIONAL_COVER.md). Earlier covered-only origination requirements are superseded. The primary path is `LoanManager.borrow` followed by optional `CoverManager.buyCover`. The corrected manager exposes no `borrowWithCover` shortcut.
 
-Tokenized assets can trade continuously while the underlying regulated market is closed, halted, or otherwise unavailable. During that gap:
+## Problem and solution
 
-- the visible token price may be thin or disconnected from the next reliable underlying benchmark;
-- a lender may know a loan is unsafe but may not be able to liquidate the collateral at a defensible price;
-- waiting for the market to reopen exposes the lender to further loss;
-- selling into an illiquid token market can create a worse price and move the loss rather than resolve it.
+Tokenized assets may trade while their underlying regulated market is closed or halted. A thin token price can diverge from the next reliable underlying benchmark, leaving lenders exposed while a defensible liquidation is unavailable. BELL makes committed purchase cash available before that uncertainty begins.
 
-The missing primitive is not another price feed. It is committed settlement capital that already exists before the uncertain session begins.
+1. A lender supplies the BELL pool. Alice deposits collateral and receives an ordinary USDC loan.
+2. Buyers post configurable whole offer lots, locking their maximum USDC obligation.
+3. In the session window, Alice selects an ordered bundle and accepts its premium, strikes and limits for her existing eligible loan.
+4. Acceptance reserves the complete funded bundle atomically. It neither disburses principal again nor replaces debt or collateral.
+5. CRE validates market evidence. Before the funded deadline, a valid official reopening benchmark determines healthy, partial or full exercise.
+6. Every normal outcome ends that session's cover and releases unused commitments. Residual debt continues on the same ordinary loan.
+7. If active cover reaches its deadline without normal settlement, permissionless terminal settlement closes its capped debt from funded commitments without a market price.
 
-## Solution
+## Economic truth and actors
 
-BELL creates a fixed-strike purchase commitment before the protected window:
+The shared BELL pool holds ordinary and covered loans. LPs bear ordinary credit risk, including explicit bad-debt write-offs. Cover guarantees only the selected loan/session within accepted funded terms, not the value or full recovery of every pool share. The baseline comparator is a separate market and cannot use BELL pool assets or buyer escrow.
 
-1. Lenders supply USDC to an isolated covered pool.
-2. Buyers post whole offer lots. Each lot locks USDC and states a strike, premium, stock exposure, maximum borrower LTV, and expiry.
-3. A borrower selects an exact ordered bundle of offers and calls `borrowWithCover`.
-4. The loan and its fully funded cover are created atomically or the entire transaction reverts.
-5. Chainlink CRE verifies the market session and produces a typed market-event report.
-6. If the position is unsafe, the contracts use committed buyer cash to reduce the loan debt and record the corresponding stock claim for those buyers.
-7. If no valid report arrives by the funded deadline, terminal settlement uses the fixed commitments to close the remaining debt without inventing a market price.
+- **Borrower:** owns the durable loan, may choose cover, repay, add collateral and withdraw eligible surplus. Cover premiums are non-refundable and earned on allocation.
+- **Buyer:** locks cash for selected lots. Maximum cash payment is bounded by those lots' escrow. Stock value plus premium may be less than cash paid; there is no guaranteed profit. Buyer escrow never pays another loan or an ordinary write-off.
+- **Lender:** owns pool shares. NAV includes exact active-loan debt; withdrawals depend on available cash and ordinary losses can reduce NAV.
+- **Keeper:** indexes canonical state, prepares unsigned requests and may submit permissionless settlement. It cannot choose prices, override monetary outcomes or sign public actor transactions.
+- **CRE workflow:** authenticates external schedule, price, corporate-action, halt and reference facts against pinned chain state through a typed receiver.
+- **Arc:** stores contract state, transfers USDC and supplies public transaction evidence.
 
-The lender receives deterministic access to committed cash. The borrower knows the premium and liquidation terms before borrowing. The buyer accepts a bounded purchase obligation and receives the premium plus the collateral claim generated by exercise.
+There is no promise of risk-free returns or recovery beyond the funded debt cap. Mock stock and eligibility demonstrate mechanics, not real issuer custody, redemption or regulatory eligibility.
 
-## Economic truth
+## Durable loan and session receipt
 
-BELL does not eliminate loss and does not promise buyer profit. It assigns risk before the uncertain window and makes the maximum contractual loss knowable and funded.
+`loanId` identifies one debt/collateral position for its entire life. `receiptId` identifies one immutable session-cover agreement and explicitly stores its `loanId`. Their counters and meaning differ; clients must never substitute one for the other.
 
-- Buyers can lose if the verified value of the stock claim is below their strike payment plus the value of the premium received.
-- A buyer's maximum cash obligation is bounded by the USDC locked for the accepted lot.
-- Premium is earned immediately when a lot is allocated and is non-refundable.
-- Buyers choose whether the premium, strike discount, and exposure are attractive enough.
-- No later participant is forced to absorb a previous participant's loss.
-- Lender loss cannot be shifted into an unfunded promise.
+- Ordinary origination requires effective immutable configuration, authenticated fresh reference, an open/nonhalted session, permitted LTV and pool liquidity. Offers and cover premium are not required.
+- LoanManager owns borrow, repay, collateral operations, liquidation and financial closure. Only the borrower may withdraw collateral or finalize handoff. Repayment and collateral addition are permissionless and need no fresh price.
+- Cover requires an active uncovered loan with nonzero debt, an eligible new session, compatible token/share basis, fresh authenticated valuation, trigger health and complete funding through its deadline.
+- Acceptance preserves original principal, start, rate, prior repayments and custody. Both acceptance debt and deadline debt must satisfy borrower consent and the supported settlement domain.
+- At most one receipt is active per loan. Ended receipts remain inspectable and cannot reactivate. A later eligible session may attach a new receipt to the remaining loan.
+- Prior buyer claims survive later coverage, repayment and closure. They never consume another loan's backing.
 
-## Actors
+The pool tracks at most 32 outstanding loans, counting ordinary and covered loans once each. Assets equal liquid USDC plus exact active-loan debt. Its legacy `activeReceiptIds` getter contains durable loan IDs; the keeper exposes `activeLoanIds`. The baseline has separate capital/accounting.
 
-- **Alice — borrower:** supplies tokenized-stock collateral, accepts an exact offer bundle, receives USDC principal, may add collateral or repay, and receives unused collateral or fixed-strike rounding excess when entitled.
-- **Rahul and Meera — buyers:** post independently configurable offer lots, lock USDC, earn allocated premiums, and receive stock claims when their lots are exercised.
-- **Lender:** supplies USDC to the isolated protected pool and owns pool shares.
-- **Keeper:** observes state and submits permissionless settlement transactions. It never chooses prices, offer terms, or monetary outcomes.
-- **Chainlink CRE workflow:** verifies the external market event and submits typed facts through the authenticated receiver.
-- **Arc:** runs the contracts, stores the state, settles USDC, and provides transaction evidence.
+## Immutable cover windows
 
-## Product modes
+| Profile | Opens before scheduled close | Cutoff before scheduled close | Use |
+|---|---:|---:|---|
+| LIVE | 7200 seconds | 1800 seconds | Production timing |
+| REPLAY | 600 seconds | 60 seconds | Explicit simulation timing |
 
-### Local Anvil
+Profiles and offsets are constructor-pinned, never mutable operator settings. Acceptance requires `opensAt <= execution < cutoffAt` and `scheduledOpen <= opensAt < cutoffAt < scheduledClose`. Receipts snapshot the window. Replay timing changes no monetary formula or authority requirement.
 
-- Deterministic multi-wallet testing with funded local accounts.
-- Alice, Rahul, Meera, lender, keeper, and report relay use distinct addresses.
-- Configurable offer inputs change real contract outcomes.
-- Automated demo signers are allowed only in this visibly labelled local mode.
-- No result may be hard-coded into the UI, engine, backend, or contracts.
+## Offer lots and consent
 
-### Arc testnet
+- A whole lot is allocated to at most one receipt; flexible size requires multiple lots.
+- Terms bind stock quantity, fixed strike, premium, maximum borrower LTV, asset/session policy, expiry and nonce.
+- Required escrow is `ceil(lotShares × strike)` in common fixed-point units. Buyer eligibility is checked at posting and allocation.
+- Free unexpired offers may be cancelled; reserved offers may not. Later ineligibility, pause or transfer restrictions cannot cancel funded financial obligations.
+- A receipt accepts at most eight lots, descending strike then ascending offer ID for ties. Settlement keeps that order.
+- Premium is credited once on successful cover allocation. There is no universal premium cap, strike floor or hidden ranking rule.
 
-- Connected wallets sign their own money-moving transactions.
-- Distinct public addresses are used for the borrower and buyers.
-- The keeper may submit only permissionless operations.
-- The deployment configuration, receipts, events, and explorer links form the public evidence.
+Quote consent binds chain, CoverManager, borrower/nonce, durable loan ID, original principal/multiplier, current collateral and recipient, exact scheduled/config/corporate/reference identities, ordered offer IDs/term hashes, premiums, share/strike limits, both debt ceilings, expiry and deadline bounds. Policy hashes bind the original loan multiplier and immutable profile. Actual acceptance time and funded debt ceiling are stored in the receipt.
 
-### Optional preview
+`buyCover` validates consent/funding, enters the shared debt/cash-transition guard before book movements, reserves lots, pays premiums and activates the receipt atomically. Failure rolls back receipt, nonce, cap, premiums and escrow. It creates no debt, collateral deposit or principal payment.
 
-- May show input-driven projections before a transaction.
-- Must be labelled as a preview rather than an onchain outcome.
-- Cannot be used as proof of protocol execution.
+## Risk policy and original interest
 
-## Core protocol requirements
-
-### Isolated protected pool
-
-- Covered loans use a dedicated pool. A baseline or unprotected market is financially separate.
-- Pool assets equal liquid USDC plus the exact debt of active covered loans.
-- Supply and withdrawal math must use exact observable contract state.
-- Withdrawals may be limited by available liquid USDC even when NAV is higher.
-- The MVP supports at most thirty-two active covered receipts per pool so exact NAV is computable onchain. Supply, withdrawal, and settlement must be gas-tested at that bound.
-
-### Offer lots
-
-- An offer is an all-or-nothing lot.
-- A lot is allocated to at most one receipt.
-- Flexible buyer size is represented by posting multiple lots.
-- A lot includes stock share quantity, fixed strike, premium, maximum borrower LTV, eligible asset/session policy, expiry, and nonce.
-- Required cash is `ceil(lotShares × strike)` in common fixed-point units.
-- Buyer eligibility is checked when a lot is posted and when it is allocated.
-- After allocation, later ineligibility, transfer restrictions, or token pause cannot cancel the financial obligation.
-- Free unexpired offers may be cancelled. Reserved offers may not.
-- Premium is credited immediately after successful atomic borrowing and is non-refundable.
-- The protocol has no universal premium cap, universal strike floor, or hidden net-price ranking rule.
-
-### Atomic covered borrowing
-
-`borrowWithCover` must atomically:
-
-- validate the borrower and collateral;
-- validate the session and immutable policy snapshot;
-- validate the exact ordered offer bundle;
-- validate quote consent bounds and expiry;
-- reserve every selected lot;
-- transfer collateral into custody;
-- create the immutable coverage receipt;
-- transfer principal from the protected pool;
-- credit buyer premiums;
-- revert all state if any step fails.
-
-The quote hash binds static consent:
-
-- chain ID and manager address;
-- borrower and borrower nonce;
-- principal, collateral, and recipient;
-- session, configuration, and policy hashes;
-- ordered offer IDs and exact offer-term hashes;
-- accepted reference facts;
-- premium, share, weighted-strike, and deadline bounds.
-
-Inclusion-time values such as actual start time and resulting funded debt ceiling belong in the immutable receipt, not in a quote field that ordinary mempool delay can invalidate.
-
-Each receipt accepts at most eight offer lots. The accepted order must be descending strike, then ascending offer ID for equal strikes.
-
-### Default MVP risk policy
-
-- Maximum origination LTV: 60%.
-- Unsafe settlement trigger LTV: 75%.
-- Post-exercise target LTV: 65%.
-- Fixed simple annual rate: 8%.
-
-These values are stored in versioned configuration and snapshotted immutably into each receipt. A future configuration may change them only for future receipts, and the registry must preserve `origination LTV < target LTV < trigger LTV`.
-
-### Fixed simple interest
-
-For receipt `r`:
+Default versioned policy is 60% origination LTV, 75% ordinary/settlement trigger, 65% target and 8% simple annual interest. Registry policy preserves `origination < target < trigger`. The loan retains its original terms; future configuration cannot rewrite its rate/start. Cover separately snapshots compatible effective policy and uses the stricter original/current admission trigger.
 
 ```text
-elapsed(t) = min(t, settlementDeadline) - startTime
-interestAccrued(t) = ceil(originalPrincipal × rateNumerator × elapsed(t) / rateDenominator)
-debt(t) = max(0, originalPrincipal + interestAccrued(t) - cumulativeDebtReduction)
+effectiveTime(t) = min(t, activeCoverDeadline) while cover is active; otherwise t
+elapsed(t) = effectiveTime(t) - originalLoanStart
+interest(t) = ceil(originalPrincipal × originalRateNumerator × elapsed(t) / originalRateDenominator)
+debt(t) = max(0, originalPrincipal + interest(t) - cumulativeDebtReduction)
 ```
 
-- Interest is calculated from immutable original principal.
-- Interest does not compound.
-- Partial repayments do not reset the clock or principal basis.
-- Interest stops permanently at the settlement deadline.
-- Once debt reaches zero, the receipt cannot accrue debt again.
+Interest never compounds or capitalizes. Partial repayments do not reset the original basis. Ordinary debt has no cover maturity or permanent deadline cap. Active cover funds/caps original-basis debt through its deadline. Normal settlement removes that cap, so residual debt continues original-basis accrual. Full repayment or terminal financial closure permanently zeroes debt; it cannot revive.
 
-### Settlement
+## Normal and terminal settlement
 
-- Before the deadline, normal settlement requires an accepted report for the receipt's session.
-- The benchmark is processed at most once per receipt.
-- At or after the deadline, normal settlement reverts and terminal settlement is the valid path.
-- Healthy or partially settled receipts retain all unused reserved cover while debt remains.
-- Unused cover is released only after debt is zero.
-- A halt may restrict new risk but cannot prevent repayment or terminal closure.
+Before its deadline, an active receipt may process its accepted official reopening benchmark once. A healthy result exercises no cash; an unsafe result exercises fixed commitments toward the target or full closure. Every normal result ends the receipt, releases all unused reserved cash and detaches cover. Healthy/partial residual debt and collateral remain on the ordinary loan. An ended receipt no longer supplies terminal protection.
 
-For lot `i`, cumulative fixed-strike cash is:
+For each lot:
 
 ```text
 cashOwed_i(X) = ceil(X × strike_i)
 incrementalCash = cashOwed_i(newCumulativeShares) - cashOwed_i(oldCumulativeShares)
 ```
 
-- Incremental cash may never exceed the lot's remaining locked capacity.
-- The pool receives exactly the applied debt reduction.
-- Any last-fill fixed-strike amount above remaining debt becomes Alice's pull credit.
-- Exercise order is fixed at receipt creation: descending strike, then ascending offer ID for ties.
-- Settlement never re-sorts offers.
-- Zero benchmark value and non-improving partial branches must still be able to proceed to funded debt closure.
+Charges cannot exceed remaining locked capacity. The pool receives exactly the debt reduction; last-fill cash above remaining debt becomes the borrower's pull credit. A paid fill converting to zero physical delivery units reverts atomically rather than charging a buyer for no units.
 
-### Terminal settlement
+At or after an active receipt's deadline, normal settlement reverts and anyone may call terminal settlement. It needs no market price, exercising the minimum funded fixed-strike quantity with cumulative rounding to close capped debt. Halt, token pause or temporary physical backing shortage cannot prevent funded financial closure. Full repayment also ends attached cover and releases unused cash. Financial closure and physical handoff remain separate states.
 
-- Any account may call terminal settlement after the deadline.
-- Terminal settlement requires no market price.
-- It exercises the minimum cumulative fixed-strike quantity needed to cover remaining debt, subject to the already funded lots.
-- It uses cumulative rounding, not independent per-call rounding.
-- It must close the debt even if the token is paused or physical claim delivery is temporarily unavailable.
+## Ordinary liquidation and collateral
 
-### Claims and corporate actions
+Fresh authenticated valuation and an open/nonhalted session are required for borrowing, collateral withdrawal, liquidation and cover admission. Ordinary liquidation uses the original trigger/target. The uncovered cutoff-to-close interval uses a 50% trigger and 45% target. The bonus is 550 bps. Covered ordinary liquidation is allowed only inside its stored window and releases cover first.
 
-The receipt records economic claims in snapshot-share units. A report-committed multiplier converts them into deliverable token units:
+Cash, debt reduction and collateral claims agree exactly. `maxRepay` is a ceiling that reverts if insufficient. Insolvent all-collateral liquidation writes off residual debt explicitly and reduces pool NAV without buyer escrow or another loan's backing. Unpaid zero-delivery dust follows the explicit contract rule; it is never a paid buyer claim.
+
+Covered collateral withdrawal is permitted only inside its own window, retains all reserved economic shares and meets fresh health/outstanding-claim backing checks. Ordinary withdrawal also needs fresh health/backing. Repayment and collateral addition remain possible without fresh prices.
+
+## Claims and corporate actions
+
+Each loan retains its original economic share basis. Authenticated cumulative multipliers convert prices and claims:
 
 ```text
 benchmarkValuePerSnapshotShare = benchmarkPrice × currentMultiplier / snapshotMultiplier
-deliverableTokenUnits = snapshotShares × currentMultiplier / snapshotMultiplier
+deliveryUnits = floor(snapshotShares × currentMultiplier / snapshotMultiplier)
 ```
 
-- The multiplier is authenticated as part of the accepted report.
-- Physical token delivery requires actual backing for the converted units.
-- If delivery is unavailable, the internal claim remains and financial settlement still completes.
-- The demo stock must be split-capable and demonstrably backed; changing metadata alone may not create deliverable balances.
-- Cash dividends, mergers, and spinoffs are unsupported in the MVP. Assets requiring them cannot be listed.
+Monetary multiplier numerators and denominators must each be positive and at most `uint64.max`; report/stored wire fields remain `uint128`. This supported domain does not alter the 21-word report schema. Corporate actions never rewrite old claims' immutable delivery units.
+
+Each loan reserves worst-case future conversion headroom alongside outstanding immutable claims. With `B = 2^64 - 1`, `R = B²` and `U = uint256.max`, the vault preserves `outstandingUnits + remainingShares × R <= U`. Collateral additions exceeding headroom reject before transfer. Headroom does not manufacture physical backing.
+
+Claims mature immediately for owner-only deferred pull. Physical delivery still needs that loan's actual backing and successful unrestricted token transfer; pause/shortage leaves the claim outstanding. Top-ups never borrow other loans' backing. The legacy `LoanVault.Claim.receiptId` field means durable `loanId` in corrected wiring.
+
+`HANDOFF_PENDING` means debt is financially closed while borrower surplus delivery is pending. It is distinct from active cover; receipt status independently proves cover ended. Mock stock supports split/pause/restriction demonstrations but has no issuer backing. Cash dividends, mergers and spinoffs are unsupported; assets requiring them cannot be listed.
 
 ## Contract architecture
 
-- `AssetRegistry`: versioned asset and future-session policy; immutable live receipt snapshots.
-- `SessionOracle`: accepted typed session and benchmark facts.
-- `BELLMarketEventReceiver`: production Keystone forwarder and workflow authentication.
-- `SimulationMarketEventReceiver`: immutable simulation-only receiver.
-- `DemoReportAdapter`: explicitly trusted EOA demo relay, never production authority.
-- `ProtectedPool`: lender shares, liquid USDC, and exact covered-debt NAV.
-- `LoanVault`: collateral custody, debt records, and buyer claims.
-- `CommitmentBook`: segregated offer cash, reservation, premiums, exercise, and release.
-- `CoverManager`: sole monetary coordinator for borrow, repay, normal settlement, and terminal settlement.
-- `MockStockToken`: backed split/pause/restriction test asset.
-- `BaselineMarket`: separate unprotected comparator with no access to protected capital.
+- `AssetRegistry`: immutable versioned asset/configuration identities.
+- `SessionOracle`: accepted session, corporate, benchmark and fresh reference facts.
+- `BELLMarketEventReceiver`: production Keystone forwarder/workflow authentication.
+- `SimulationMarketEventReceiver`: separate immutable simulation authority.
+- `DemoReportAdapter`: explicitly trusted EOA simulation relay, never production authority.
+- `LoanManager`: durable debt/collateral lifecycle; sole authorized pool/vault coordinator.
+- `CoverManager`: receipt consent, funded allocation and normal/terminal settlement.
+- `ProtectedPool`: lender shares, cash and exact ordinary/covered loan NAV.
+- `LoanVault`: per-loan debt, collateral backing and immutable deferred claims.
+- `CommitmentBook`: segregated offer cash, premiums, reservation, exercise and release.
+- `MockStockToken` and mock eligibility: explicit demonstration token/policy.
+- `BaselineMarket`: separate comparator without access to BELL capital or buyer escrow.
 
-`CoverManager` is the only component allowed to coordinate monetary state changes between the book, vault, and pool. User deposits, withdrawals, offer posting, and mature credit withdrawals remain direct user actions.
+Pool/vault bind only LoanManager; book binds CoverManager/pool. Managers have reciprocal one-time bindings and explicit loan/receipt bridge identities. A shared guard rejects ordinary mutations and pool NAV reads during incomplete cash/debt transitions. Bridges cannot create callback cycles.
 
-## Chainlink CRE workflow
+## CRE facts and authority
 
-CRE is the market-event verification layer, not the money engine.
+CRE orchestrates authenticated external API observations and pinned chain state: exchange schedule/status, primary/independent secondary prices, corporate actions, halt and reference facts. It verifies freshness, source agreement, exact domain/configuration, monotonic nonce, previous state and finality. Replay fixtures are supplied facts, never proof of live official sources.
 
-### Inputs
+The unchanged 21-word envelope supports `SESSION_SCHEDULED` (1), `CLOSE_CONFIRMED` (2), official `REOPEN_BENCHMARK` (3), `CORPORATE_ACTION` (4), `HALT` (5), and appended ordinary `MARKET_PRICE` (6). A kind-6 current quote is admission valuation, never an official reopen. Its report session ID is zero while independently checked source facts bind the active scheduled session.
 
-- authoritative exchange session calendar and status;
-- primary benchmark observation;
-- independent confirmation for extreme moves;
-- corporate-action multiplier source;
-- halt status when applicable;
-- Arc contract state, including expected session, previous state, configuration hash, and nonce.
-
-### Validation
-
-- asset, session, chain, receiver, configuration, and policy domain;
-- session timing, cutoff, freshness, and finality;
-- expected previous state and monotonic nonce;
-- source agreement and independent confirmation rules;
-- corporate-action multiplier consistency;
-- replay, duplicate, and conflicting-final-report protection.
-
-### Output
-
-CRE produces a typed report for one of:
-
-- `SESSION_SCHEDULED`;
-- `CLOSE_CONFIRMED`;
-- `REOPEN_BENCHMARK`;
-- `CORPORATE_ACTION`;
-- `HALT`.
-
-The deployed path is:
+Ordinary references require two fresh independent sources in the active open interval. They are asset-level, monotonic and config/corporate-bound, valid for at most 1800 seconds. Borrower prices and historical storage alone are not authority. Halt/unhalt does not revive an invalidated reference.
 
 ```text
-external sources + Arc state
-  -> Chainlink CRE validation
-  -> DON-signed report
-  -> KeystoneForwarder
-  -> BELLMarketEventReceiver
-  -> SessionOracle
-  -> permissionless settle()
+external APIs + pinned chain state -> CRE validation -> authenticated report
+  -> KeystoneForwarder -> receiver -> SessionOracle -> permissionless settlement
 ```
 
-Production, CRE simulation, and EOA demo paths use separate immutable receivers or adapters. Weakening simulation authentication may never weaken production authentication. All modes retain payload domain, session, configuration, nonce, previous-state, expiry, and replay validation.
+Production DON, CLI simulation with the official mock forwarder, and EOA demo relay are separately labelled authority paths. Actual local CLI simulation demonstrates report delivery/acceptance and exact ordinary borrow/repay/cover/settlement parity; it is not a production DON or public Arc proof. Refreshed CRE work still requires independent review. Build success alone proves neither acceptance nor financial parity. See [CRE instructions](../cre/bell-market-event/README.md) and [delivery status](DEPLOYMENTS_AND_DEMO.md).
 
-## Application requirements
+## App, keeper and modes
 
-- Preserve the approved visual language, layout, typography, motion, and responsive behavior.
-- The borrower can connect a wallet, choose an exact bundle, review all terms, sign consent, approve assets, and submit `borrowWithCover`.
-- Buyers can post, cancel, and replace configurable offers; withdraw premium and cash credits; and inspect reserved exposure and claims.
-- Lenders can supply, redeem subject to liquidity, and inspect protected-pool NAV.
-- Control can configure replay inputs and orchestrate steps, but cannot impersonate a connected wallet on Arc testnet.
-- Replay must feel like re-running the incident against BELL: the same inputs lead to contract-calculated outputs, and changing buyer offers changes the position and outcome.
-- Every displayed financial value comes from contracts or an explicitly labelled preview using the parity engine.
-- Persistent labels identify network, clock, data source, signing mode, asset type, write path, and outcome authority.
-- `HANDOFF_PENDING` may never be shown as released cover.
-- Mark-to-benchmark P&L must be labelled as unrealized; realized P&L requires actual disposal or redemption proceeds.
+Preserve approved layout, typography, motion and responsive appearance. Borrowers separately borrow, inspect durable debt, review exact optional-cover consent and sign attachment. Buyers configure offers and inspect credits/exposure/claims. Lenders inspect shared-pool risk, NAV and liquidity. Values come from contracts or an explicitly labelled engine preview. Mark-to-benchmark P&L is unrealized; realized P&L needs actual disposal/redemption proceeds.
 
-## Backend and keeper requirements
+The keeper indexes ordered logs with canonical hashes, cursors, deduplication and reorg recovery. Financial snapshots use one pinned block with final hash guards; integer values are raw decimal strings. `/prepare` constructs unsigned requests. Public actors sign their own money-moving transactions; operators cannot impersonate them. Automated actor signers exist only on visibly labelled owned local Anvil nodes.
 
-- Index events in block, transaction, and log order.
-- Store block hashes and cursors; deduplicate deliveries; recover after disconnects; detect replaced blocks.
-- API integer values are raw decimal strings with source block and hash.
-- User endpoints construct unsigned requests. Connected wallets sign money-moving transactions.
-- The keeper may monitor and submit permissionless settlement only.
-- Anvil-only automated actor signers must be isolated, visibly labelled, and unavailable in Arc configuration.
-- No privileged browser token or private key may be exposed in client-side environment variables.
-- Replay evidence records inputs, configuration hashes, actor addresses, reports, receipts, events, conservation checks, and explorer links.
+Persistent labels identify network, timing profile, source, signer, mock asset, write path and outcome authority. Evidence retains inputs, configuration identities, actors, reports, actual receipts/events, claims, conservation/parity and public explorer links where applicable. Scripted local consent is never interactive wallet consent. No key or privileged browser token enters the client.
 
-## Demo acceptance flow
+## Demo acceptance and verification
 
-1. Lender supplies the protected pool.
-2. Rahul and Meera post independently configurable offer lots.
-3. Alice reviews and accepts an exact ordered bundle.
-4. `borrowWithCover` creates the loan and cover atomically.
-5. Invalid or premature reports are rejected.
-6. CRE submits an accepted typed report.
-7. Permissionless settlement produces healthy, partial, or full exercise from actual inputs.
-8. A partial result retains residual cover and shows `HANDOFF_PENDING` where appropriate.
-9. Alice or another payer repays remaining debt, or terminal settlement closes it after the deadline.
-10. Buyers inspect and withdraw eligible premium, cash, and stock claims.
-11. Repeated settlement calls prove idempotence.
-12. The UI shows transaction hashes, contract events, balances, debt, locked cash, and conservation evidence.
+1. Supply liquidity; borrow ordinarily before offers exist and record the durable loan ID.
+2. Change buyer lots; attach cover to the same loan in its window. Prove no second principal/collateral transfer and unchanged original 8% basis/prior repayments.
+3. Reject early/late, unsafe, stale/forged-reference, wrong-policy/consent and underfunded attachments atomically.
+4. Authenticate distinct schedule, ordinary reference and official reopen facts through the labelled CRE path. Reject premature, replayed and wrong-domain reports.
+5. Demonstrate healthy/partial/full normal outcomes, release unused cash and prove residual ordinary accrual.
+6. Attach later-session cover to the same loan while preserving prior claims; keep an unrelated ordinary loan distinct.
+7. Demonstrate funded terminal closure without an official reopen and with paused stock. Retain claims; later pull only as owner when backing/transfer permits.
+8. Show ordinary liquidation/write-off and shared LP risk without another loan's escrow/backing.
+9. Change offers and repeat; compare exact values, errors and observable state with the engine. Show real hashes and conservation evidence.
+10. Repeat with connected actors on a fresh corrected Arc deployment. Retain public evidence and Studio build/preview history after approved source transfer.
 
-## Security invariants
+Release gates include arithmetic/lifecycle units, receiver authentication/replay tests, stateful conservation/authority invariants, at least 1000 seeded exact differential cases, bounded gas tests, local multi-wallet replay, corrected public Arc replay, actual CRE CLI evidence and desktop/mobile browser/visual checks. Individual stage evidence does not imply every gate passes. The [maintained runbook](DEPLOYMENTS_AND_DEMO.md) records completed evidence and pending delivery.
 
-- Protected lender capital is isolated from the baseline market.
-- A covered borrow cannot exist without fully funded accepted capacity through its deadline.
-- A lot is never allocated to more than one receipt.
-- Total lot charges never exceed its locked capacity.
-- Premium is credited exactly once.
-- Pool debt reduction equals the USDC it receives from repayment or exercise.
-- Debt never increases after the deadline and never revives after closure.
-- Unused cover is not released while debt remains.
-- Normal settlement cannot use an unaccepted, stale, replayed, or wrong-domain report.
-- Terminal settlement cannot depend on a price report.
-- Token restrictions cannot alter fixed financial obligations.
-- Stock claims cannot be physically delivered without authenticated conversion and backing.
-- All monetary behavior exists in contracts; backend and frontend do not override it.
-- Engine results, custom errors, and observable state exactly match the contracts.
+## Security invariants and scope
 
-## Verification gates
+- Active cover is fully funded through its deadline by only its selected lots.
+- Ordinary loans may be uncovered; receipts never replace durable debt identities.
+- Lots are never double-allocated; premiums credit once and charges stay within escrow.
+- Pool cash received equals debt reduction; ordinary bad debt cannot use buyer escrow.
+- Closed debt never revives; detached ordinary debt is not permanently capped.
+- Every normal outcome releases unused cover even if ordinary debt remains.
+- Terminal closure is price-independent; token restrictions cannot cancel financial obligations.
+- Claims preserve immutable units, per-loan backing and supported future conversion headroom.
+- Contracts, engine, keeper and UI agree exactly; no monetary outcome is hard-coded.
 
-- Unit tests for every arithmetic boundary and state transition.
-- Atomic rollback tests for each borrow rejection.
-- Receiver authentication, metadata-layout, replay, conflict, domain, and expiry tests.
-- Scenario tests using distinct actors.
-- Stateful invariants covering all protocol conservation and authority rules.
-- At least one thousand seeded exact differential cases between contracts and engine.
-- Maximum-fill and bounded-NAV gas measurements.
-- Local multi-wallet end-to-end replay with configurable offers.
-- Arc testnet replay using connected accounts and public transaction evidence.
-- CRE live/replay parity and sanitized simulation evidence.
-- Visual tests at approved desktop and mobile viewports with masking limited to unavoidable addresses, timestamps, hashes, and explorer links.
+Out of scope: refinancing/rollover, transfer to another pool, special session refunds, buyer-profit guarantees, unsupported corporate actions, mainnet and real issuer custody. A later session receipt on a continuing loan is supported and is not refinancing.
 
-## Out of scope for the MVP
-
-- rollover or refinancing;
-- transfer into a standard lending pool;
-- ordinary discretionary collateral closeout;
-- special cancellation or refund state for a market session;
-- buyer profit guarantees;
-- unsupported corporate actions;
-- mainnet deployment;
-- real issuer-backed stock custody.
-
-## Success criteria
-
-BELL is ready for sponsor validation when a reviewer can change Rahul and Meera's offers, have Alice accept a fully funded bundle, run the same incident locally and on Arc testnet, watch CRE authenticate the market event, and verify that every debt reduction, buyer charge, premium, claim, and release is produced by audited contracts with exact replayable evidence.
-
+BELL is ready for sponsor validation when a reviewer can reproduce the corrected lifecycle, change buyer inputs, distinguish simulated/live authority and verify every debt reduction, premium, claim, release and loss from actual contract evidence.

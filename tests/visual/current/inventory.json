@@ -1,0 +1,82 @@
+{
+  "review": "Exact bytes accepted by root and final_cross_component_review; original design references retained unchanged",
+  "sourceManifestSha256": "a077d0c39cc00d8adec93fe73bb4a99c95127e7e35d724f93380c3f1caae5763",
+  "originalDesignReference": "../baselines",
+  "threshold": 0.3,
+  "maxDiffPixelRatio": 0.0025,
+  "masks": [],
+  "files": [
+    {
+      "file": "borrow-1440.png",
+      "sha256": "57b62e1c0ea5d5fee50777f0823abe1d37052553ad71bbda2f511e164af74001",
+      "width": 1440,
+      "height": 1266
+    },
+    {
+      "file": "borrow-390.png",
+      "sha256": "94aaf1b573da7b671fbaf05bd37bf6845345828a4aa86985a3b167c15379e4be",
+      "width": 390,
+      "height": 1852
+    },
+    {
+      "file": "buyers-1440.png",
+      "sha256": "55331177835cdc626d11095e74b137c9dbf8c55c49ae0422da18681228030c0c",
+      "width": 1440,
+      "height": 1242
+    },
+    {
+      "file": "buyers-390.png",
+      "sha256": "1e2ad7844e1c1e17c17b19c8392809840a15dbd1f229fa5353462fb2fa11d1bb",
+      "width": 390,
+      "height": 1621
+    },
+    {
+      "file": "control-1440.png",
+      "sha256": "da052f6075d4aab3bc1fac9b678b01597d912e9abc79ea9111e33cb16623c21d",
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "control-390.png",
+      "sha256": "ed67945b03db9482440d4a2cd8480abd24fa50eac661d0c58c9e35c289e49fc4",
+      "width": 390,
+      "height": 1613
+    },
+    {
+      "file": "home-1440.png",
+      "sha256": "bc8dd8f71abc63adcb3f23bc795bea3e0f2edf0ac151b72da029bf4878069a44",
+      "width": 1440,
+      "height": 6184
+    },
+    {
+      "file": "home-390.png",
+      "sha256": "16ed9818d48f74217210361d6f1d319bbe16ddfde3bcc0ad3806dd223a1b91d4",
+      "width": 390,
+      "height": 7320
+    },
+    {
+      "file": "lend-1440.png",
+      "sha256": "428b72216f894e4804c69fa1395bb32b0e88c2156248900cbe3ea8735da19f38",
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "lend-390.png",
+      "sha256": "aeb5384e0c78298139196e002c715215a27b675f8a597a1e7814d788e20d9515",
+      "width": 390,
+      "height": 1584
+    },
+    {
+      "file": "replay-1440.png",
+      "sha256": "481f901c797aac4498214cb361a53332fa1c82675ca21b465df29a7fd45b0e57",
+      "width": 1440,
+      "height": 1432
+    },
+    {
+      "file": "replay-390.png",
+      "sha256": "cd835d9ea77614beee9cc17f062bae20a084ab42b1a866ad9ecc2fc8a07d8820",
+      "width": 390,
+      "height": 2300
+    }
+  ]
+}
