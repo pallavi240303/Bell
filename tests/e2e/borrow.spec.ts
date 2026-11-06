@@ -1,0 +1,6 @@
+import {test,expect} from '@playwright/test';
+import {fixture,borrowed} from './support';
+import {decodeFunctionData} from 'viem';
+import {artifact} from '../../services/keeper/abi';
+test.setTimeout(180000);
+test('Alice borrows without offers then attaches exact wallet cover without another disbursement',async({page})=>{const h=await fixture(page,'borrow');try{await borrowed(h);const f=await h.checkpoint('attached same original loan'),r=f.state.receipts[h.receiptId.toString()],p=f.state.loans[h.loanId.toString()];expect(r.receipt.loanId).toBe(h.loanId);expect(r.receipt.offerIds).toEqual(h.ids);expect(p.loan.activeCoverId).toBe(h.receiptId);expect(p.debtRecord.terms.rateNumerator).toBe(800n);expect(p.debtRecord.cumulativeDebtReduction).toBe(BigInt(h.input.partialRepay));const tx=h.transactions.at(-1)!;expect(tx.actor).toBe(h.actors.borrower);expect(tx.events.some((e:any)=>e.decoded.eventName==='CoverPurchased')).toBe(true);const call=decodeFunctionData({abi:artifact('CoverManager').abi,data:tx.data});expect(call.functionName).toBe('buyCover');expect((call.args as any)[0]).toBe(h.loanId);expect((call.args as any)[2]).toEqual(h.ids);expect((call.args as any)[4]).toBe(r.receipt.quoteHash);expect(h.preparations.at(-1).tx.data).toBe(tx.data);}finally{await h.stop();}});

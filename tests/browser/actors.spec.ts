@@ -17,12 +17,12 @@ test('connected buyer posts complete terms, cancels FREE lot and withdraws cash 
     await page.getByRole('button',{name:'WITHDRAW CASH CREDIT',exact:true}).click();await expect.poll(()=>h.sends.length).toBe(3);await expect(page.getByText('CONFIRMED · canonical snapshot refreshed')).toBeVisible();expect(await h.read('book','cashCredit',[h.actors.buyerA])).toBe(0n);
   }finally{await h.stop();}
 });
-test('borrower signs one exact atomic bundle then reads partial and terminal settlement truth',async({page})=>{
-  const h=await harness();try{await h.attach(page,'borrower');await page.goto('/');await connect(page);await open(page,'BORROW');await page.getByText('WALLET & EXACT INPUTS').click();await page.getByLabel('Borrow consent').fill(JSON.stringify(h.quote));
-    await page.getByRole('button',{name:'FREE',exact:true}).first().click();await page.getByRole('button',{name:'FREE',exact:true}).last().click();await page.getByRole('button',{name:'SIGN ATOMIC BORROW',exact:true}).click();await expect.poll(()=>h.sends.length).toBe(1);await expect(page.getByText('CONFIRMED · canonical snapshot refreshed')).toBeVisible();expect(await h.read('manager','nextReceiptId')).toBe(2n);
-    await h.report(1);await h.report(2);await h.send(h.actors.keeper!,'manager','settle',[1n]);const partial=await h.observe();expect(partial.state.receipts['1'].debt).toBeGreaterThan(0n);
-    await open(page,'CONTROL');await page.getByRole('button',{name:'REFRESH SNAPSHOT',exact:true}).first().click();await open(page,'BORROW');await expect(page.getByText('ACTIVE',{exact:true})).toBeVisible();
-    await h.node.time(2000n);await h.send(h.actors.keeper!,'manager','terminalSettle',[1n]);await open(page,'CONTROL');await page.getByRole('button',{name:'REFRESH SNAPSHOT',exact:true}).first().click();await open(page,'BORROW');await expect(page.getByText('HANDOFF_PENDING',{exact:true})).toBeVisible();expect((await h.observe()).state.receipts['1'].debt).toBe(0n);
+test('borrower attaches cover and reads ended cover with residual ordinary debt',async({page})=>{
+  const h=await harness();try{await h.attach(page,'borrower');await page.goto('/');await connect(page);await open(page,'BORROW');await page.getByText('WALLET & EXACT INPUTS').click();await page.getByLabel('Cover consent').fill(JSON.stringify(h.quote));
+    await page.getByRole('button',{name:'FREE',exact:true}).first().click();await page.getByRole('button',{name:'FREE',exact:true}).last().click();await page.getByRole('button',{name:'SIGN COVER PURCHASE',exact:true}).click();await expect.poll(()=>h.sends.length).toBe(1);await expect(page.getByText('CONFIRMED · canonical snapshot refreshed')).toBeVisible();expect(await h.read('manager','nextReceiptId')).toBe(2n);
+    await h.report(1);await h.report(2);await h.send(h.actors.keeper!,'manager','settle',[1n]);const partial=await h.observe();expect(partial.state.loans[h.loanId.toString()].debt).toBeGreaterThan(0n);
+    await open(page,'CONTROL');await page.getByRole('button',{name:'REFRESH',exact:true}).first().click();await open(page,'BORROW');await expect(page.getByText('ACTIVE',{exact:true})).toBeVisible();
+    expect((await h.observe()).state.loans[h.loanId.toString()].loan.activeCoverId).toBe(0n);await h.node.time(110000n);expect((await h.observe()).state.loans[h.loanId.toString()].debt).toBeGreaterThan(partial.state.loans[h.loanId.toString()].debt);
     await open(page,'REPLAY');expect(h.sends.length).toBe(1);
   }finally{await h.stop();}
 });

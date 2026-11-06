@@ -5,7 +5,7 @@ import {argsFor} from '../../services/keeper/abi';
 import {amount} from '../../src/state/truth';
 async function open(page:Page,name:string){await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('dialog').getByRole('button',{name,exact:true}).click();await expect(page.locator('main > div').first()).toContainText(name);await expect(page.getByText('(LOADING)').locator('..')).toHaveCSS('opacity','0');}
 async function connect(page:Page){await page.goto('/');await page.getByRole('button',{name:/^WALLET/}).click();await expect(page.locator('header')).toContainText('LOCAL ANVIL');}
-async function borrow(h:Awaited<ReturnType<typeof harness>>){const frame=await h.observe(),hashes=h.ids.map(id=>frame.state.termsHashes[id]!);await h.send(h.actors.borrower!,'manager','borrowWithCover',argsFor('CoverManager','borrowWithCover',[h.quote,h.ids,hashes,hashBundle(h.d.chainId,h.d.addresses.manager,h.quote,h.ids,hashes)]));}
+async function borrow(h:Awaited<ReturnType<typeof harness>>){const frame=await h.observe(),hashes=h.ids.map(id=>frame.state.termsHashes[id]!);await h.send(h.actors.borrower!,'manager','buyCover',argsFor('CoverManager','buyCover',[h.loanId.toString(),h.quote,h.ids,hashes,hashBundle(h.d.chainId,h.d.addresses.manager,h.quote,h.ids,hashes)]));}
 
 test('review buyer edit signs visible amounts in the fresh-nonce repost',async({page})=>{
   const h=await harness();try{
@@ -14,20 +14,12 @@ test('review buyer edit signs visible amounts in the fresh-nonce repost',async({
     const inputs=page.locator('main input');await inputs.nth(0).fill('3');await inputs.nth(1).fill('120');await inputs.nth(2).fill('1.2');
     await page.getByRole('button',{name:'CANCEL + REPOST',exact:true}).click();await expect.poll(()=>h.sends.length).toBe(2);await expect(page.getByText('CONFIRMED · canonical snapshot refreshed')).toBeVisible();
     const offer=await h.read('book','getOffer',[h.ids.at(-1)]);expect(offer.terms.snapshotShares).toBe(3000000000000000000n);expect(offer.terms.strike).toBe(120000000n);expect(offer.terms.premium).toBe(1200000n);expect(offer.terms.nonce).toBe(10n);
-    expect((await h.read('book','getOffer',[h.ids[0]])).status).toBe(4);
+    expect((await h.read('book','getOffer',[h.ids[0]])).status).toBe(4n);
   }finally{await h.stop();}
 });
 
-test('review new confirmed receipt is selected and older receipts remain selectable in the position header',async({page},info)=>{
-  const h=await harness();try{
-    await borrow(h);
-    for(const [i,buyer]of h.input.scenarios[0].buyers.entries())await h.send(h.actors[buyer.actor]!,'book','postOffer',argsFor('CommitmentBook','postOffer',[{...h.input.offerCommon,assetId:h.asset,policyHash:h.policy,strike:buyer.strike,nonce:String(20+i)}]));
-    await h.attach(page);await connect(page);await open(page,'BORROW');await page.getByText('WALLET & EXACT INPUTS').click();await page.getByLabel('Borrow consent').fill(JSON.stringify({...h.quote,borrowerNonce:'1'}));
-    await page.getByRole('button',{name:'FREE',exact:true}).first().click();await page.getByRole('button',{name:'FREE',exact:true}).last().click();await page.getByRole('button',{name:'SIGN ATOMIC BORROW',exact:true}).click();
-    await expect(page.getByText('CONFIRMED · canonical snapshot refreshed')).toBeVisible();await expect(page.getByLabel('Receipt',{exact:true})).toHaveValue('2');
-    await page.getByLabel('Receipt',{exact:true}).selectOption('1');await expect(page.getByLabel('Receipt',{exact:true})).toHaveValue('1');
-    await page.getByText('WALLET & EXACT INPUTS').click();await info.attach('receipt-selection',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
-  }finally{await h.stop();}
+test('review new ordinary loan is selected while an older covered loan remains selectable',async({page},info)=>{
+ const h=await harness();try{await borrow(h);await h.attach(page);await connect(page);await open(page,'BORROW');await page.getByText('WALLET & EXACT INPUTS').click();await page.getByLabel('Loan action').selectOption('borrow');const args=JSON.parse(await page.getByLabel('Loan arguments').inputValue());args[0].principal='1000000';args[0].collateralShares='1000000000000000000';await page.getByLabel('Loan arguments').fill(JSON.stringify(args));await page.getByRole('button',{name:'SIGN LOAN ACTION',exact:true}).click();await expect(page.getByText('CONFIRMED · canonical snapshot refreshed')).toBeVisible();await expect(page.getByLabel('Loan',{exact:true})).toHaveValue('2');await page.getByLabel('Loan',{exact:true}).selectOption('1');await expect(page.getByLabel('Loan',{exact:true})).toHaveValue('1');await page.getByText('WALLET & EXACT INPUTS').click();await info.attach('loan-selection',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});}finally{await h.stop();}
 });
 
 test('review partial locked cash and pending claim remain truthful through paused then confirmed delivery',async({page},info)=>{
@@ -39,7 +31,7 @@ test('review partial locked cash and pending claim remain truthful through pause
     await expect(page.getByText(/PENDING UNITS/)).toBeVisible();await expect(page.getByText(/DELIVERED UNITS/)).toHaveCount(0);
     await page.getByRole('button',{name:'WITHDRAW SHARES',exact:true}).click();await expect(page.getByText(/Execution reverted with reason:/)).toBeVisible();await expect.poll(()=>h.sends.length).toBe(0);await expect(page.getByText(/PENDING UNITS/)).toBeVisible();
     await info.attach('pending-claim',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
-    await h.send(h.actors.owner!,'stock','setPaused',[false]);await open(page,'CONTROL');await page.getByRole('button',{name:'REFRESH SNAPSHOT',exact:true}).first().click();await expect(page.locator('header')).toContainText('LOCAL ANVIL');await open(page,'BUYERS');
+    await h.send(h.actors.owner!,'stock','setPaused',[false]);await open(page,'CONTROL');await page.getByRole('button',{name:'REFRESH',exact:true}).first().click();await expect(page.locator('header')).toContainText('LOCAL ANVIL');await open(page,'BUYERS');
     await page.getByRole('button',{name:'WITHDRAW SHARES',exact:true}).click();await expect(page.getByText('CONFIRMED · canonical snapshot refreshed')).toBeVisible();await expect(page.getByText(/DELIVERED UNITS/)).toBeVisible();await expect(page.getByText(/PENDING UNITS/)).toHaveCount(0);
   }finally{await h.stop();}
 });
