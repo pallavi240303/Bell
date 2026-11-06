@@ -40,3 +40,16 @@ The first state response and its 11-event response share canonical block `710307
 The embedded preview renders the existing design. Its rendered network verification badge and wallet interactions remain unverified: the desktop browser controls could not reliably interact with that embedded frame. API availability alone does not establish frontend transaction readiness. Connected actors must sign their own transactions. Use the [local wallet runbook](DEPLOYMENTS_AND_DEMO.md) for the verified local flow and the separate [public CRE evidence](../deployments/arc-optional-cover-runtime-evidence.json) for the four accepted Arc reports.
 
 No Git commit, push or GitHub synchronization was performed. Explorer source verification, connected-wallet public financial replay and the submission video remain outstanding. This build record is not an independent security audit or a production deployment claim.
+
+
+## Hosted wallet integration
+
+Studio's wallet/authentication and container drafts were pulled into an isolated review copy. The reviewed integration adds passive EIP-6963 provider discovery, explicit public actor selection, strict permissionless settlement preparation and generation checks that discard stale wallet requests. Controls use the existing wallet panel; contract sources, engine, CSS, page layouts and visual assets remain unchanged.
+
+The container builds ABI artifacts from source and serves the built frontend, read-and-prepare API and fixed Arc read-only RPC from one process. It shares one paced RPC client across indexing, verification and proxy calls. Finalized discovery records complete inclusive ranges, verifies event/header provenance and rolls back whole ranges on canonical changes. It never seeds a discovery cursor. Cold requests await bounded startup; readiness follows actual index synchronization.
+
+The initial public sparse scan encountered RPC rate limiting. Charging each log attempt and retry the full existing pacing window fixed that observed failure. A fresh actual Arc scan plus pinned state/events completed in 92.930 seconds at block `71044185`, hash `0x3ad2c06b69703e795cf0f8fe47fe75c2a5b033052085ce05442d343542449895`. Its 12 complete ranges produced 31 stored records and 11 relevant events without a 429 response. This is measured evidence, not a latency guarantee.
+
+Local verification recorded 76 frontend tests, 23 engine tests, five pacing tests and 38 discovery/dense regressions passing. Six desktop/mobile browser tests used a separate Vite server and owned Anvil fixtures: provider selection, consent clearing, normal settlement and terminal settlement. Settlement outcomes matched the engine exactly. These are local test-wallet results; connected MetaMask/Rabby public actor transactions remain to be signed by the owner.
+
+See [hosted demo steps](HOSTED_DEMO.md). A public Vercel deployment and its cold-start checks must be recorded separately once actually completed. Docker is not installed on the local machine; local HTTP tests are not described as a container image build.

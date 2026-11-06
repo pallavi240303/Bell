@@ -223,3 +223,8 @@ The recorded constructor profile is REPLAY. Runtime identities and public eviden
 Existing project: [BELL in Arc Studio](https://studio.arc.io/app/bb079c72-6d74-4e95-a4ce-8703ca67cca9).
 
 The approved 262-file source-only upload is complete. Studio built the contracts, frontend and CRE workflow and ran the checks recorded in the [Studio build record](STUDIO_BUILD.md). All approved source bytes are verified: 259 text hashes after pull and three binary hashes inside Studio. Public state and boundary-matched events return HTTP 200; state reads took 30–68 seconds. The existing frontend renders, but its embedded browser verification badge and wallet interactions remain unverified. No Studio secret-vault provisioning is claimed. Connected-wallet public financial replay, explorer source verification and the submission video remain outstanding. Keep credentials, login tokens and signed journals out of source uploads.
+
+
+## Hosted wallet demo
+
+Use [the hosted demo runbook](HOSTED_DEMO.md) for the Container deployment and actor/provider controls. Keep the corrected addresses above and both deployment evidence files unchanged. Hosting requires no actor private keys or CRE API secrets. Start a new synthetic replay window only after the hosted application, approvals and all four wallets are ready; the earlier reported session may already be expired.

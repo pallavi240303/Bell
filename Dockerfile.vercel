@@ -1,0 +1,40 @@
+# syntax=docker/dockerfile:1
+FROM ghcr.io/foundry-rs/foundry:v1.7.1 AS foundry
+FROM node:22.22.0-bookworm-slim AS build
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=foundry /usr/local/bin/forge /usr/local/bin/forge
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY foundry.toml remappings.txt tsconfig.json vite.config.ts index.html ./
+COPY contracts/src/ ./contracts/src/
+# Only the two runtime ABI helpers, never the legacy contract test suite.
+COPY contracts/test/helpers/MockCashToken.sol contracts/test/helpers/MockEligibilityPolicy.sol ./contracts/test/helpers/
+# .dockerignore permits precisely the production dependency closure and license.
+COPY contracts/lib/openzeppelin-contracts/contracts/ ./contracts/lib/openzeppelin-contracts/contracts/
+COPY contracts/lib/openzeppelin-contracts/LICENSE ./vendor-licenses/openzeppelin-contracts-LICENSE
+COPY engine/ ./engine/
+COPY src/ ./src/
+COPY public/ ./public/
+COPY services/keeper/ ./services/keeper/
+COPY scripts/generate-browser-abis.ts scripts/serve-deployment.mjs ./scripts/
+COPY deployments/arc-optional-cover.json ./deployments/arc-optional-cover.json
+RUN forge build contracts/src contracts/test/helpers/MockCashToken.sol contracts/test/helpers/MockEligibilityPolicy.sol
+# Public frontend configuration only; the backend target is fixed in the wrapper.
+ENV VITE_RPC_URL=/rpc
+RUN npm run build:frontend
+
+FROM node:22.22.0-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production PORT=3000
+COPY --from=build --chown=node:node /app/package.json ./package.json
+COPY --from=build --chown=node:node /app/node_modules/ ./node_modules/
+COPY --from=build --chown=node:node /app/dist/ ./dist/
+COPY --from=build --chown=node:node /app/out/ ./out/
+COPY --from=build --chown=node:node /app/services/keeper/abi.ts /app/services/keeper/config.ts /app/services/keeper/store.ts /app/services/keeper/indexer.ts /app/services/keeper/discovery.ts /app/services/keeper/state.ts /app/services/keeper/api.ts /app/services/keeper/transactions.ts /app/services/keeper/types.ts ./services/keeper/
+COPY --from=build --chown=node:node /app/scripts/serve-deployment.mjs ./scripts/serve-deployment.mjs
+COPY --from=build --chown=node:node /app/deployments/arc-optional-cover.json ./deployments/arc-optional-cover.json
+COPY --from=build --chown=node:node /app/vendor-licenses/ ./vendor-licenses/
+USER node
+EXPOSE 3000
+CMD ["node", "--import", "tsx", "scripts/serve-deployment.mjs"]
