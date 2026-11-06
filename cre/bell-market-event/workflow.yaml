@@ -4,7 +4,7 @@ replay-settings:
   workflow-artifacts:
     workflow-path: ./src/main.ts
     config-path: ./config.replay.json
-    secrets-path: ""
+    secrets-path: ./secrets.yaml
 live-settings:
   user-workflow:
     workflow-name: bell-market-event-live

@@ -329,6 +329,54 @@ contract MarketEventReceiverTest is Test {
         assertEq(mode, 1);
     }
 
+    function testSimulationAccepts64ByteMetadataAndEmitsIdentityWithoutReportId() public {
+        Types.MarketEventReport memory r = _report(simOracle);
+        bytes memory payload = abi.encode(r);
+        assertEq(payload.length, 672);
+        bytes memory metadata = abi.encodePacked(ID, SIM_NAME, OWNER, bytes2(0x1234));
+        assertEq(metadata.length, 64);
+        vm.recordLogs();
+        vm.prank(SIMULATOR);
+        simulator.onReport(metadata, payload);
+        assertEq(simOracle.assetState(ASSET).nextNonce, 2);
+        assertEq(uint8(simOracle.sessionPhase(SESSION)), uint8(Types.SessionPhase.SCHEDULED));
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs.length, 2);
+        assertEq(logs[1].emitter, address(simulator));
+        assertEq(logs[1].topics[1], keccak256(payload));
+        (bytes32 id, bytes10 name, address owner, uint8 mode) =
+            abi.decode(logs[1].data, (bytes32, bytes10, address, uint8));
+        assertEq(id, ID);
+        assertEq(name, SIM_NAME);
+        assertEq(owner, OWNER);
+        assertEq(mode, 1);
+    }
+
+    function testSimulation64ByteMetadataRetainsForwarderLengthPayloadAndDomainChecks() public {
+        bytes memory metadata = abi.encodePacked(ID, SIM_NAME, OWNER, bytes2(0xffff));
+        Types.MarketEventReport memory r = _report(simOracle);
+        bytes memory payload = abi.encode(r);
+        vm.expectRevert(abi.encodeWithSelector(Errors.UnauthorizedReceiver.selector, FORWARDER));
+        vm.prank(FORWARDER);
+        simulator.onReport(metadata, payload);
+        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidMetadataLength.selector, 63));
+        vm.prank(SIMULATOR);
+        simulator.onReport(_truncate(metadata), payload);
+        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidMetadataLength.selector, 65));
+        vm.prank(SIMULATOR);
+        simulator.onReport(bytes.concat(metadata, hex"00"), payload);
+        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidReportLength.selector, 673));
+        vm.prank(SIMULATOR);
+        simulator.onReport(metadata, bytes.concat(payload, hex"00"));
+        r.chainId++;
+        vm.expectRevert(Errors.WrongReportDomain.selector);
+        vm.prank(SIMULATOR);
+        simulator.onReport(metadata, abi.encode(r));
+        assertEq(simOracle.assetState(ASSET).nextNonce, 1);
+        assertEq(simOracle.assetState(ASSET).stateHash, bytes32(0));
+        assertEq(uint8(simOracle.sessionPhase(SESSION)), uint8(Types.SessionPhase.NONE));
+    }
+
     function _metadata() internal pure returns (bytes memory) {
         return abi.encodePacked(ID, NAME, OWNER, bytes2(0x1234));
     }

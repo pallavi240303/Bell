@@ -1,5 +1,5 @@
 import { encodeAbiParameters, keccak256, parseAbiParameters, toHex, zeroAddress, zeroHash, type Hex } from 'viem';
-import { configSchema, bundleSchema, stateSchema, type Config, type Evidence, type ArcState, type ObservationBundle } from './schema.ts';
+import { configSchema, bundleSchema, stateSchema, httpsOrigin, type Config, type Evidence, type ArcState, type ObservationBundle } from './schema.ts';
 export const reportAbi = parseAbiParameters('uint8 schemaVersion,uint8 kind,uint256 chainId,address oracle,bytes32 assetId,bytes32 sessionId,bytes32 configHash,uint64 nonce,bytes32 previousStateHash,uint64 observedAt,uint64 validUntil,uint64 scheduledOpen,uint64 scheduledClose,uint256 benchmarkPrice,uint8 corporateAction,bytes32 actionId,uint128 multiplierNumerator,uint128 multiplierDenominator,bool halted,bytes32 primarySourceHash,bytes32 secondarySourceHash');
 export interface MarketEventReport {
     schemaVersion: number;
@@ -66,8 +66,7 @@ export function validateConfig(input: unknown): Config {
     bounded(c.maxValiditySeconds, 64, true);
     requireThat(BigInt(c.agreementBps) <= 10000n && BigInt(c.extremeMoveBps) <= 10000n, 'POLICY_RANGE');
     for (const key of ['calendar', 'primary', 'secondary', 'corporate'] as const) {
-        const u = new URL(c.providers[key].url);
-        requireThat(u.protocol === 'https:' && !u.username && !u.password && !u.search && !u.hash, 'PUBLIC_ENDPOINT');
+        httpsOrigin(c.providers[key].url);
     }
     return c;
 }
@@ -100,17 +99,17 @@ function validate(c: Config, b: ObservationBundle, s: ArcState, now: bigint): De
     requireThat(b.sessionId === (sessionEvent ? c.sessionId : zeroHash), 'SESSION_IDENTITY');
     // Bundle identity is supplied by the calendar adapter and bound to Arc above.
     // Each provider must independently name the same fact; never infer its identity.
-    if (b.kind === 3) {
+    if (b.kind === 3 || b.kind === 6) {
         requireThat(b.primary && b.secondary, 'MISSING_EVIDENCE');
         for (const benchmark of [b.primary, b.secondary])
-            requireThat(benchmark.assetId === b.assetId && benchmark.sessionId === b.sessionId, 'BENCHMARK_EVIDENCE_IDENTITY');
+            requireThat(benchmark.assetId === b.assetId && benchmark.sessionId === (b.kind === 6 ? s.activeSessionId : b.sessionId), 'BENCHMARK_EVIDENCE_IDENTITY');
     }
-    if (b.kind === 3 || b.kind === 4)
+    if (b.kind === 3 || b.kind === 4 || b.kind === 6)
         requireThat(b.corporate && b.corporate.assetId === b.assetId, 'CORPORATE_EVIDENCE_IDENTITY');
     const nonce = bounded(s.nextNonce, 64, true);
     requireThat(nonce < 2n ** 64n - 1n, 'NONCE_EXHAUSTED');
     const cal = source(b.calendar, 'calendar', c, now);
-    const primary = b.kind === 3 ? source(b.primary, 'primary', c, now) : b.kind === 4 ? source(b.corporate, 'corporate', c, now) : cal;
+    const primary = b.kind === 3 || b.kind === 6 ? source(b.primary, 'primary', c, now) : b.kind === 4 ? source(b.corporate, 'corporate', c, now) : cal;
     const observedAt = BigInt(primary.observedAt), validUntil = bounded(b.calendar.validUntil, 64, true);
     requireThat(validUntil >= now && validUntil >= observedAt && validUntil - observedAt <= BigInt(c.maxValiditySeconds), 'VALIDITY');
     const open = bounded(b.calendar.scheduledOpen, 64), close = bounded(b.calendar.scheduledClose, 64), reopen = bounded(b.calendar.scheduledReopen, 64);
@@ -138,7 +137,7 @@ function validate(c: Config, b: ObservationBundle, s: ArcState, now: bigint): De
             price = bounded(primary.price ?? '0', 256, true);
             const second = source(b.secondary, 'secondary', c, now);
             secondary = second.responseHash;
-            requireThat(second.providerId !== primary.providerId && new URL(second.url).origin !== new URL(primary.url).origin && second.responseHash !== primary.responseHash, 'INDEPENDENT_EVIDENCE');
+            requireThat(second.providerId !== primary.providerId && httpsOrigin(second.url) !== httpsOrigin(primary.url) && second.responseHash !== primary.responseHash, 'INDEPENDENT_EVIDENCE');
             requireThat(BigInt(second.observedAt) >= reopen && BigInt(second.observedAt) >= BigInt(s.session.closeObservedAt), 'SECONDARY_TIMING');
             const other = bounded(second.price ?? '0', 256, true);
             requireThat(delta(price, other) * 10000n <= price * BigInt(c.agreementBps), 'SOURCE_AGREEMENT');
@@ -147,12 +146,44 @@ function validate(c: Config, b: ObservationBundle, s: ArcState, now: bigint): De
                 requireThat(second.corroborated === true, 'EXTREME_CORROBORATION');
             source(b.corporate, 'corporate', c, now);
             requireThat(b.corporate, 'MISSING_MULTIPLIER');
-            num = bounded(b.corporate.multiplierNumerator, 128, true);
-            den = bounded(b.corporate.multiplierDenominator, 128, true);
+            num = bounded(b.corporate.multiplierNumerator, 64, true);
+            den = bounded(b.corporate.multiplierDenominator, 64, true);
             requireThat(b.corporate.action === s.corporate.action && b.corporate.actionId === s.corporate.actionId, 'CORPORATE_ACTION_IDENTITY');
-            const n = s.corporate.action === 0 ? 1n : BigInt(s.corporate.multiplierNumerator), d = s.corporate.action === 0 ? 1n : BigInt(s.corporate.multiplierDenominator);
+            const n = s.corporate.action === 0 ? 1n : bounded(s.corporate.multiplierNumerator, 64, true), d = s.corporate.action === 0 ? 1n : bounded(s.corporate.multiplierDenominator, 64, true);
             requireThat(num === n && den === d, 'MULTIPLIER_MISMATCH');
         }
+    }
+    if (b.kind === 6) {
+        const active = s.activeSession;
+        requireThat(active && s.activeSessionId !== zeroHash && s.activePhase === 1 && active.phase === 1, 'REFERENCE_SESSION_NOT_OPEN');
+        requireThat(active.assetId === b.assetId && active.configHash === b.configHash && s.configHash === b.configHash, 'SESSION_IDENTITY');
+        requireThat(!s.halted && b.calendar.status === 'OPEN' && now >= BigInt(active.scheduledOpen) && now < BigInt(active.scheduledClose), 'MARKET_STATUS');
+        requireThat(b.calendar.assetId === b.assetId && b.calendar.sessionId === s.activeSessionId && b.calendar.configHash === b.configHash, 'CALENDAR_IDENTITY');
+        requireThat(open === BigInt(active.scheduledOpen) && close === BigInt(active.scheduledClose), 'CALENDAR_TIMING');
+        const second = source(b.secondary, 'secondary', c, now);
+        requireThat(second.providerId !== primary.providerId && httpsOrigin(second.url) !== httpsOrigin(primary.url) && second.responseHash !== primary.responseHash, 'INDEPENDENT_EVIDENCE');
+        const actionTime = bounded(s.corporate.observedAt, 64);
+        for (const observation of [primary, second, cal]) {
+            const t = bounded(observation.observedAt, 64, true);
+            requireThat(t >= open && t < close && t <= now && now - t <= 1800n, 'REFERENCE_TIME');
+            if (observation !== cal) requireThat(t >= actionTime, 'CORPORATE_TIME');
+        }
+        requireThat(validUntil - observedAt <= 1800n, 'VALIDITY');
+        requireThat(s.latestReference && observedAt > bounded(s.latestReference.observedAt, 64), 'REFERENCE_ORDER');
+        price = bounded(primary.price ?? '0', 96, true);
+        const other = bounded(second.price ?? '0', 96, true);
+        requireThat(delta(price, other) * 10000n <= price * BigInt(c.agreementBps), 'SOURCE_AGREEMENT');
+        source(b.corporate, 'corporate', c, now);
+        requireThat(b.corporate, 'MISSING_MULTIPLIER');
+        requireThat(s.latestCorporateActionHash !== undefined && s.corporate.reportHash === s.latestCorporateActionHash, 'CORPORATE_ACTION_IDENTITY');
+        requireThat(b.corporate.action === s.corporate.action && b.corporate.actionId === s.corporate.actionId, 'CORPORATE_ACTION_IDENTITY');
+        num = bounded(b.corporate.multiplierNumerator, 64, true);
+        den = bounded(b.corporate.multiplierDenominator, 64, true);
+        const hasAction = s.latestCorporateActionHash !== zeroHash;
+        requireThat(hasAction || (s.corporate.action === 0 && s.corporate.actionId === zeroHash), 'CORPORATE_ACTION_IDENTITY');
+        requireThat(num === (hasAction ? bounded(s.corporate.multiplierNumerator, 64, true) : 1n)
+            && den === (hasAction ? bounded(s.corporate.multiplierDenominator, 64, true) : 1n), 'MULTIPLIER_MISMATCH');
+        secondary = second.responseHash;
     }
     if (b.kind === 4) {
         requireThat(b.corporate, 'MISSING_MULTIPLIER');
@@ -160,8 +191,8 @@ function validate(c: Config, b: ObservationBundle, s: ArcState, now: bigint): De
         actionId = b.corporate.actionId;
         requireThat((action === 1 || action === 2) && (s.supportedCorporateActions & (1 << action)) !== 0, 'UNSUPPORTED_ACTION');
         requireThat(actionId !== zeroHash, 'ACTION_IDENTITY');
-        num = bounded(b.corporate.multiplierNumerator, 128, true);
-        den = bounded(b.corporate.multiplierDenominator, 128, true);
+        num = bounded(b.corporate.multiplierNumerator, 64, true);
+        den = bounded(b.corporate.multiplierDenominator, 64, true);
         if (actionId === s.corporate.actionId)
             return { status: 'noop', reason: 'ACTION_ALREADY_FINAL' };
         requireThat(observedAt >= BigInt(s.corporate.observedAt), 'ACTION_ORDER');
@@ -171,7 +202,7 @@ function validate(c: Config, b: ObservationBundle, s: ArcState, now: bigint): De
         if ((b.calendar.status === 'HALTED') === s.halted)
             return { status: 'noop', reason: 'HALT_ALREADY_FINAL' };
     }
-    const report: MarketEventReport = { schemaVersion: 1, kind: b.kind, chainId: BigInt(s.chainId), oracle: s.oracle, assetId: s.assetId, sessionId: b.sessionId, configHash: b.configHash, nonce, previousStateHash: s.stateHash, observedAt, validUntil, scheduledOpen: sessionEvent ? open : 0n, scheduledClose: sessionEvent ? close : 0n, benchmarkPrice: price, corporateAction: action, actionId, multiplierNumerator: num, multiplierDenominator: den, halted: b.kind === 5 && b.calendar.status === 'HALTED', primarySourceHash: primary.responseHash, secondarySourceHash: secondary };
+    const report: MarketEventReport = { schemaVersion: 1, kind: b.kind, chainId: BigInt(s.chainId), oracle: s.oracle, assetId: s.assetId, sessionId: b.sessionId, configHash: b.configHash, nonce, previousStateHash: s.stateHash, observedAt, validUntil, scheduledOpen: sessionEvent || b.kind === 6 ? open : 0n, scheduledClose: sessionEvent || b.kind === 6 ? close : 0n, benchmarkPrice: price, corporateAction: action, actionId, multiplierNumerator: num, multiplierDenominator: den, halted: b.kind === 5 && b.calendar.status === 'HALTED', primarySourceHash: primary.responseHash, secondarySourceHash: secondary };
     return { status: 'submit', report, reportHash: keccak256(encodeReport(report)) };
 }
 export interface Ports {
@@ -198,16 +229,16 @@ export function execute(input: unknown, p: Ports): RunResult {
     catch {
         return { status: 'reject', reason: 'INVALID_CONFIG' };
     }
-    const log = (result: RunResult, report?: MarketEventReport) => p.log(JSON.stringify({ mode: c.mode, workflowConfigHash: configurationHash(c), ...result, ...(report ? { nonce: report.nonce.toString(), previousStateHash: report.previousStateHash, primarySourceHash: report.primarySourceHash, secondarySourceHash: report.secondarySourceHash } : {}) }));
+    const log = (result: RunResult, report?: MarketEventReport) => p.log(JSON.stringify({ mode: c.mode, ...(c.dataSource ? { dataSource: c.dataSource } : {}), workflowConfigHash: configurationHash(c), ...result, ...(report ? { nonce: report.nonce.toString(), previousStateHash: report.previousStateHash, primarySourceHash: report.primarySourceHash, secondarySourceHash: report.secondarySourceHash } : {}) }));
     // Immediate bounded read retries; the next cron invocation supplies backoff.
     // Never retry a write, including one whose outcome is ambiguous.
     const read = <T>(fn: () => T): T => { for (let i = 1; i <= c.maxReadAttempts; i++) {
         try {
             return fn();
         }
-        catch {
+        catch (error) {
             if (i === c.maxReadAttempts)
-                throw new Error('UNAVAILABLE');
+                throw error;
         }
     } throw new Error('UNAVAILABLE'); };
     let state: ArcState, bundle: unknown;
@@ -215,8 +246,9 @@ export function execute(input: unknown, p: Ports): RunResult {
         state = stateSchema.parse(read(p.readState));
         bundle = read(p.observe);
     }
-    catch {
-        const r: RunResult = { status: 'unavailable', reason: 'READ_FAILED' };
+    catch (error) {
+        const reason = error instanceof Error && ['QUOTE_INVALID', 'QUOTE_BINDING', 'QUOTE_NOT_OFFICIAL_REOPEN', 'QUOTE_HTTP_UNAVAILABLE', 'QUOTE_SECRET_UNAVAILABLE'].includes(error.message) ? error.message : 'READ_FAILED';
+        const r: RunResult = { status: 'unavailable', reason };
         log(r);
         return r;
     }
