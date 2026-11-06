@@ -8,6 +8,7 @@ import {MockStockToken} from "../../src/demo/MockStockToken.sol";
 import {LoanVault} from "../../src/LoanVault.sol";
 import {Errors} from "../../src/lib/Errors.sol";
 import {VaultAPI} from "./LoanVault.t.sol";
+import {ConversionInspectionHarness} from "../helpers/ConversionInspectionHarness.sol";
 import {MockCashToken} from "../helpers/MockCashToken.sol";
 
 interface ClaimAPI {
@@ -223,8 +224,12 @@ contract ClaimsAndSplitsTest is Test {
 
     function testConversionUsesFullWidthIntermediateProducts() public {
         uint128 factor = uint128(1) << 120;
-        _loan(1, factor, factor, factor);
-        uint256 id = claims.recordClaim(1, BUYER, factor, factor, factor, 1000);
+        ConversionInspectionHarness inspection = new ConversionInspectionHarness();
+        assertEq(inspection.inspect(factor, factor, factor, factor, factor), uint256(1) << 120);
+        // Wide inspection remains supported; monetary admission uses the accepted component bound.
+        uint128 supported = type(uint64).max;
+        _loan(1, factor, supported, supported);
+        uint256 id = claims.recordClaim(1, BUYER, factor, supported, supported, 1000);
         vm.prank(BUYER);
         assertEq(claims.withdrawClaim(id, BUYER), uint256(1) << 120);
         assertEq(stock.balanceOf(BUYER), uint256(1) << 120);

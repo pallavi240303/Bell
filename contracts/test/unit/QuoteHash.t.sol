@@ -44,7 +44,7 @@ contract QuoteHashTest is Test {
             original,
             keccak256(
                 abi.encode(
-                    keccak256("BELL_COVER_QUOTE_V1"),
+                    keccak256("BELL_COVER_QUOTE_V2"),
                     block.chainid,
                     address(9),
                     quote,
