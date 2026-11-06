@@ -2,8 +2,8 @@ import {encodeFunctionData} from 'viem';
 import {artifact,argsFor,contracts} from './abi.ts';
 import {exactKeys,rawUint,type Deployment,type Header,type Address,type Hex} from './types.ts';
 import {verifyDeployment} from './config.ts';
-const allowed:Record<string,string[]>={pool:['deposit','redeem'],book:['postOffer','cancelOffer','withdrawPremium','withdrawCashCredit'],manager:['borrowWithCover','repay','addCollateral','withdrawCollateral','topUpBacking','finalizeHandoff'],vault:['withdrawClaim']};
-const approvals:Record<string,[string,string]>={deposit:['cash','pool'],offer:['cash','book'],premium:['cash','book'],repay:['cash','manager'],collateral:['stock','vault'],backing:['stock','vault']};
+const allowed:Record<string,string[]>={pool:['deposit','redeem'],book:['postOffer','cancelOffer','withdrawPremium','withdrawCashCredit'],loanManager:['borrow','repay','addCollateral','withdrawCollateral','liquidate','topUpBacking','finalizeHandoff'],manager:['buyCover'],vault:['withdrawClaim']};
+const approvals:Record<string,[string,string]>={deposit:['cash','pool'],offer:['cash','book'],premium:['cash','book'],repay:['cash','loanManager'],collateral:['stock','vault'],backing:['stock','vault']};
 export interface Unsigned {chainId:string;from:Address;to:Address;data:Hex;value:'0';sourceBlock:string;sourceBlockHash:Hex}
 export async function prepareActor(d:Deployment,source:Header,input:Record<string,any>,client:any):Promise<Unsigned> {
   await verifyDeployment(client,d,source);

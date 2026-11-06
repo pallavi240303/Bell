@@ -1,7 +1,7 @@
 import type { Address, Hex } from 'viem';
 export type { Address, Hex };
 export interface Header { number: bigint; hash: Hex; parentHash?: Hex; timestamp: bigint }
-export const requiredComponents=['manager','book','pool','vault','cash','stock','oracle','registry','receiver'] as const;
+export const requiredComponents=['manager','loanManager','book','pool','vault','cash','stock','oracle','registry','receiver'] as const;
 export type Component=typeof requiredComponents[number];
 export interface Deployment { chainId: string; deploymentBlock: string; addresses: Record<Component,Address>&Record<string,Address>; codeHashes: Record<Component,Hex>&Record<string,Hex> }
 export function rawUint(value: unknown, bits = 256): bigint {
