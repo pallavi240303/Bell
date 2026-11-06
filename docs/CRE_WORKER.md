@@ -40,11 +40,11 @@ The two mounts are `/data` (persistent and writable) and `/jobs` (read only). Ru
 
 Create a resource using **Docker Compose Empty** and paste `compose.coolify.worker.yaml`. Save, leave Domains empty and deploy. Registry credentials are unnecessary: the image is public. The definition uses a pinned image digest and declares no ports. Coolify uses the image's Docker health check. Use a native Linux/amd64 server and one replica.
 
-This variant does not depend on an adjacent `.env.worker` file or a server-relative jobs folder. Coolify exposes the declared environment-variable references in its Environment Variables panel; enter credentials privately there, never into the Compose source. It creates persistent volumes for `/data` and `/jobs`, and mounts jobs read-only in the worker. Keep the data volume across restarts and redeploys.
+For a complete forwardable server setup, absolute mount paths, environment template and job-install commands, use [Coolify hosting handoff](COOLIFY_WORKER_HANDOFF.md).
 
-Initially the worker is healthy and idle: the jobs volume is empty. The server administrator must populate its jobs volume with complete, validated immutable JSON jobs through a separate administrative mount; use the actual volume name shown by Coolify or Docker inspect, since Coolify can prefix it. Write files atomically and make them readable by UID 1000. Do not make the worker's own `/jobs` mount writable. No jobs are created automatically.
+This variant does not depend on an adjacent `.env.worker` file. Coolify exposes the declared environment-variable references in its Environment Variables panel; enter credentials privately there, never into the Compose source. It bind-mounts `/opt/bell/cre-worker/data` read/write at `/data` and `/opt/bell/cre-worker/jobs` read-only at `/jobs`. Create both server directories for UID/GID 1000 before deploying, and preserve the data directory across restarts.
 
-Keep `BELL_WORKER_MODE=dry-run` until a reviewed broadcast run is intended. Pending CRE API-key access still prevents unattended authenticated jobs. Container health alone does not prove report submission. Do not provide actor wallet keys to this worker.
+Initially the worker is healthy and idle: the jobs directory is empty. The server administrator supplies complete immutable JSON jobs into the server jobs directory atomically. Keep `BELL_WORKER_MODE=dry-run` until a reviewed broadcast run is intended. Pending CRE API-key access still prevents unattended authenticated jobs. Container health alone does not prove report submission. Do not provide actor wallet keys to this worker.
 
 ## Direct container command
 

@@ -12,6 +12,7 @@ services:
     security_opt: [no-new-privileges:true]
     environment:
       BELL_WORKER_MODE: ${BELL_WORKER_MODE:-dry-run}
+      BELL_WORKER_POLL_MS: ${BELL_WORKER_POLL_MS:-5000}
       BELL_WORKER_DATA_DIR: /data
       BELL_WORKER_JOBS_DIR: /jobs
       CRE_API_KEY: ${CRE_API_KEY:-}
@@ -19,8 +20,14 @@ services:
       FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
       TWELVEDATA_API_KEY: ${TWELVEDATA_API_KEY:-}
     volumes:
-      - worker-data:/data
-      - worker-jobs:/jobs:ro
-volumes:
-  worker-data:
-  worker-jobs:
+      - type: bind
+        source: /opt/bell/cre-worker/data
+        target: /data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /opt/bell/cre-worker/jobs
+        target: /jobs
+        read_only: true
+        bind:
+          create_host_path: false
