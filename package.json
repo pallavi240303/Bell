@@ -21,14 +21,15 @@
     "typecheck:cre": "npm --prefix cre/bell-market-event run typecheck",
     "build:cre": "npm --prefix cre/bell-market-event run build",
     "test:unit": "node --import tsx --test tests/unit/*.test.ts",
-    "test:integration": "node scripts/not-implemented.mjs integration",
-    "test:e2e": "node scripts/not-implemented.mjs e2e",
+    "test:integration": "npm run test:keeper && npm run test:cre && npm --prefix cre/bell-market-event run test:integration",
+    "test:e2e": "playwright test tests/e2e --config playwright.config.ts --project desktop --output test-results/e2e",
     "test:engine": "node --import tsx --test engine/*.test.ts",
     "verify:parity": "npm run test:engine && forge test --match-path contracts/test/differential/EngineDiff.t.sol",
     "verify:replay": "node --import tsx services/keeper/cli.ts replay",
     "test:keeper": "node --import tsx --test services/keeper/test/*.test.ts",
     "verify:workspace": "npm run typecheck && forge build && npm run test:unit",
-    "verify": "npm run format:check && npm run build && npm run test:unit && npm run test:integration && npm run test:e2e && npm run verify:parity && npm run verify:replay"
+    "verify": "npm run format:check && npm run build && npm run typecheck:cre && npm run test:unit && npm run test:frontend && npm run test:contracts && npm run test:engine && npm run test:integration && npm run test:browser && npm run test:e2e && npm run test:visual && npm run build:frontend && npm run build:cre",
+    "test:contracts": "forge test"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
