@@ -73,8 +73,15 @@ export function decodeEvidence(value:any):Evidence{
 export class Transport{
   constructor(private base='/api',private fetcher:typeof fetch=fetch){}
   private async request(path:string,input?:unknown){
-    const response=await this.fetcher.call(globalThis,`${this.base}${path}`,{method:input===undefined?'GET':'POST',headers:{'Content-Type':'application/json'},cache:'no-store',credentials:'same-origin',...(input===undefined?{}:{body:json(input)})});
-    if(!response.ok)throw Error(`Read/preparation failed (${response.status}); refresh required`);return response.json();
+    const read=input===undefined;
+    for(let attempt=0;;attempt++){
+      const response=await this.fetcher.call(globalThis,`${this.base}${path}`,{method:read?'GET':'POST',headers:{'Content-Type':'application/json'},cache:'no-store',credentials:'same-origin',...(read?{}:{body:json(input)})});
+      if(response.ok)return response.json();
+      if(!read||attempt>=2||![400,429,502,503,504].includes(response.status))throw Error(`Read/preparation failed (${response.status}); refresh required`);
+      // Retry only transient HTTP read failures; decoding and provenance checks remain fail-closed.
+      await response.body?.cancel().catch(()=>{});
+      await new Promise(resolve=>setTimeout(resolve,(attempt+1)*1000));
+    }
   }
   async state(account?:string){return decodeFrame(await this.request(`/state${account?`?watch=${encodeURIComponent(account)}`:''}`));}
   manifest(){return this.request('/manifest');}

@@ -94,5 +94,38 @@ test('local sparse discovery and dense discovery yield identical pinned financia
   const dense=new Indexer(denseStore,denseRpc,projection),sparse=new Indexer(sparseStore,node.client,projection,{discovery:'finalized'});
   const denseState=await indexedState(dense,node.client,[watched]),sparseState=await indexedState(sparse,node.client,[watched]);assert.deepEqual(sparseState,denseState);assert.equal(sparseState.block.timestamp,1005n);assert.equal(sparseState.state.balances[outsider],undefined);assert.equal(sparseState.state.balances[recipient].poolShares,1n);assert.ok(sparseState.state.balances[watched]);assert.ok(sparseState.state.assets[asset]);assert.equal(sparseStore.data.blocks.at(-1)!.logs.length,0);
   assert.deepEqual(await indexedEvents(sparse,node.client,{number:sparseState.block.number,hash:sparseState.block.hash}),await indexedEvents(dense,node.client,{number:denseState.block.number,hash:denseState.block.hash}));
+  await node.request('anvil_mine',['0x2']);
+  const secondStore=new Store(join(mkdtempSync(join(tmpdir(),'bell-other-instance-')),'store.json'),d),second=new Indexer(secondStore,node.client,projection,{discovery:'finalized'});await second.sync();
+  assert.ok(!secondStore.data.blocks.some(b=>b.header.number===sparseState.block.number.toString()));
+  assert.deepEqual(await indexedEvents(second,node.client,{number:sparseState.block.number,hash:sparseState.block.hash}),await indexedEvents(sparse,node.client,{number:sparseState.block.number,hash:sparseState.block.hash}));
  }finally{await node.stop();}
+});
+
+test('independent sparse instances serve identical pinned events at an interior covered boundary',async()=>{
+ const earlier=fixture(50),later=fixture(80);for(const f of [earlier,later])f.logs.push(f.log(3,0),f.log(12,0),f.log(70,0));
+ const a=earlier.index(),b=later.index();await a.sync();await b.sync();
+ const boundary={number:50n,hash:h(50) as `0x${string}`};assert.ok(!later.store.data.blocks.some(x=>x.header.number==='50'));
+ const expected=await indexedEvents(a,earlier.rpc,boundary),actual=await indexedEvents(b,later.rpc,boundary);
+ assert.deepEqual(actual,expected);assert.equal(actual.block.timestamp,500n);assert.equal(actual.events.length,2);assert.ok(actual.events.every(e=>e.blockNumber<=50n));
+ assert.ok(!later.store.data.blocks.some(x=>x.header.number==='50'),'reading a boundary must not invent an indexed record');
+});
+
+for(const fault of ['wrong-hash','before-deployment','after-cursor','missing-proof','scope','selected','gap','provenance','cursor','wrong-header','replaced-boundary'] as const)test(`interior sparse boundary rejects ${fault}`,async()=>{
+ const f=fixture(80);f.logs.push(f.log(3,0),f.log(70,0));const index=f.index();await index.sync();
+ const boundary={number:50n,hash:h(50) as `0x${string}`},blocks=structuredClone(f.store.data.blocks),end=blocks.at(-1)!;
+ if(fault==='wrong-hash')boundary.hash=h(999) as `0x${string}`;
+ else if(fault==='before-deployment'){boundary.number=0n;boundary.hash=h(0) as `0x${string}`;}
+ else if(fault==='after-cursor'){boundary.number=81n;boundary.hash=h(81) as `0x${string}`;}
+ else if(fault==='missing-proof')for(const b of blocks)delete b.evidence;
+ else if(fault==='scope')end.evidence![0].scope.cash=a(99);
+ else if(fault==='selected')end.evidence![0].selected=[];
+ else if(fault==='gap')blocks.splice(0,1);
+ else if(fault==='provenance')blocks.find(b=>b.logs.length)!.logs[0].blockHash=h(999);
+ f.store.replace(blocks);
+ if(fault==='cursor')f.store.data.cursor={blockNumber:'79',blockHash:h(79)};
+ if(fault==='wrong-header'||fault==='replaced-boundary'){
+  const get=f.rpc.getBlock.bind(f.rpc);let reads=0;f.rpc.getBlock=async(q:any)=>{const block=await get(q);if(q.blockNumber===50n){reads++;if(fault==='wrong-header')block.number=49n;else if(reads===3)block.hash=h(999);}return block;};
+ }
+ const reader={store:f.store,sync:async()=>{}};
+ await assert.rejects(indexedEvents(reader,f.rpc,boundary),/boundary|coverage|provenance|cursor|replaced|canonical/);
 });

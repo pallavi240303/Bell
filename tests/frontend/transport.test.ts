@@ -37,3 +37,36 @@ test('browser fetch retains its global receiver instead of the Transport instanc
 test('financial snapshot values reject negative, scientific, and arbitrary string amounts',async()=>{
   const m=await module();for(const debt of ['-1','1e3','banana',''])assert.throws(()=>m.decodeFrame({block:{number:'1',hash:`0x${'ab'.repeat(32)}`,timestamp:'1'},state:{loans:{'1':{debt}}}}),/integer/);
 });
+
+test('transient HTTP GET failures recover on attempt three with the same query and read options',async()=>{
+  const m=await module(),hash=`0x${'ab'.repeat(32)}`,account=`0x${'cd'.repeat(20)}`;
+  await Promise.all([400,429,502,503,504].map(async status=>{
+    const requests:Array<{path:string;init:any;at:number}>=[];
+    const transport=new m.Transport('/api',async(path:any,init:any)=>{requests.push({path,init,at:Date.now()});return requests.length<3?new Response('{"error":"stale"}',{status}):new Response(JSON.stringify({block:{number:'7',hash,timestamp:'100'},state:{}}));});
+    const frame=await transport.state(account);assert.equal(frame.block.number,7n);assert.equal(requests.length,3);
+    assert.ok(requests[1]!.at-requests[0]!.at>=900);assert.ok(requests[2]!.at-requests[1]!.at>=1800);
+    for(const request of requests){assert.equal(request.path,`/api/state?watch=${account}`);assert.equal(request.init.method,'GET');assert.equal(request.init.credentials,'same-origin');assert.equal(request.init.cache,'no-store');assert.equal(request.init.body,undefined);}
+  }));
+});
+test('read retries stop after three attempts and preserve the final HTTP error',async()=>{
+  const m=await module(),statuses=[400,503,429];let calls=0;
+  const transport=new m.Transport('/api',async()=>new Response('{}',{status:statuses[calls++]!}));
+  await assert.rejects(()=>transport.manifest(),/Read\/preparation failed \(429\); refresh required/);assert.equal(calls,3);
+});
+test('authentication and missing-route GET failures are never retried',async()=>{
+  const m=await module();for(const status of [401,403,404]){let calls=0;const transport=new m.Transport('/api',async()=>{calls++;return new Response('{}',{status});});await assert.rejects(()=>transport.manifest(),new RegExp(`\\(${status}\\)`));assert.equal(calls,1);}
+});
+test('unsigned preparation POSTs are never retried even for transient HTTP responses',async()=>{
+  const m=await module();for(const status of [400,429,502,503,504]){let calls=0;const transport=new m.Transport('/api',async(_path:any,init:any)=>{calls++;assert.equal(init.method,'POST');assert.deepEqual(JSON.parse(init.body),{amount:'9007199254740993'});return new Response('{}',{status});});await assert.rejects(()=>transport.prepare({amount:9007199254740993n}),new RegExp(`\\(${status}\\)`));assert.equal(calls,1);}
+});
+test('successful HTTP responses with invalid JSON or financial provenance are not retried',async()=>{
+  const m=await module(),hash=`0x${'ab'.repeat(32)}`;
+  for(const body of ['{','{"state":{}}',JSON.stringify({block:{number:'7',hash,timestamp:'100'},state:{loans:{'1':{debt:'0x10'}}}})]){
+    let calls=0;const transport=new m.Transport('/api',async()=>{calls++;return new Response(body);});await assert.rejects(()=>transport.state());assert.equal(calls,1);
+  }
+  let calls=0;const transport=new m.Transport('/api',async()=>{calls++;return new Response(JSON.stringify({block:{number:'7',hash,timestamp:'100'},events:[{blockNumber:'8',blockHash:hash,blockTimestamp:'100'}]}));});
+  await assert.rejects(()=>transport.events({number:7n,hash:hash as `0x${string}`,timestamp:100n}),/boundary/);assert.equal(calls,1);
+});
+test('transport exceptions propagate without automatic retries',async()=>{
+  const m=await module();let calls=0;const transport=new m.Transport('/api',async()=>{calls++;throw new TypeError('fetch failed');});await assert.rejects(()=>transport.manifest(),/fetch failed/);assert.equal(calls,1);
+});

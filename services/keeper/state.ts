@@ -1,4 +1,5 @@
 import {artifact,contracts} from './abi.ts';
+import {sparseBoundaryHeader} from './discovery.ts';
 import {decodeErrorResult,encodeErrorResult,type Hex as ViemHex} from 'viem';
 import {integers,rawUint,type Deployment,type Header,type Hex} from './types.ts';
 import type {Indexer} from './indexer.ts';
@@ -52,8 +53,8 @@ export async function indexedEvents(index:Pick<Indexer,'store'|'sync'>,rpc:any,b
   if(committed>=0)blocks=blocks.slice(0,committed+1);
   else{await index.sync();blocks=index.store.data.blocks.slice();}
   const last=boundary?blocks.find(b=>BigInt(b.header.number)===boundary.number&&b.header.hash===boundary.hash):blocks.at(-1);
-  if(!last)throw Error('evidence boundary unavailable');
-  const block:Header={number:rawUint(last.header.number),hash:last.header.hash as Hex,timestamp:rawUint(last.header.timestamp)};
+  if(!last&&!boundary)throw Error('evidence boundary unavailable');
+  const block:Header=last?{number:rawUint(last.header.number),hash:last.header.hash as Hex,timestamp:rawUint(last.header.timestamp)}:await sparseBoundaryHeader(index.store,blocks,rpc,boundary!);
   const relevant=relevantEvent(index.store.deployment);
   const result=await coherent(rpc,async()=>blocks.filter(b=>BigInt(b.header.number)<=block.number).flatMap(b=>b.logs.map(log=>{
     if(BigInt(log.blockNumber)!==BigInt(b.header.number)||log.blockHash!==b.header.hash)throw Error('event provenance mismatch');

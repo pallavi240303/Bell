@@ -1,6 +1,6 @@
 import {decodeEventLog,formatLog,toEventSelector,toHex} from 'viem';
 import {artifact,contracts} from './abi.ts';
-import {integers,json,raw,rawUint,type Header} from './types.ts';
+import {integers,json,raw,rawUint,type Header,type Hex} from './types.ts';
 import type {Store,StoredBlock} from './store.ts';
 const RANGE=2048n,CONCURRENCY=8;
 const hash=/^0x[0-9a-fA-F]{64}$/,address=/^0x[0-9a-fA-F]{40}$/,bytes=/^0x(?:[0-9a-fA-F]{2})*$/;
@@ -64,6 +64,15 @@ function segments(blocks:StoredBlock[],deployment:bigint,scope:Scope):Segment[]{
   }
  }
  return result;
+}
+/** Resolve an omitted header only inside validated, fully queried sparse coverage. */
+export async function sparseBoundaryHeader(store:Store,blocks:StoredBlock[],rpc:any,boundary:{number:bigint;hash:Hex}):Promise<Header>{
+ const coverage=segments(blocks,rawUint(store.deployment.deploymentBlock),scopeFor(store)),last=blocks.at(-1),cursor=store.data.cursor;
+ if(!last||cursor?.blockNumber!==last.header.number||cursor.blockHash!==last.header.hash)throw Error('uncommitted store cursor');
+ if(!coverage.some(segment=>segment.sparse&&boundary.number>=rawUint(blocks[segment.start]!.header.number)&&boundary.number<=rawUint(blocks[segment.end]!.header.number)))throw Error('evidence boundary unavailable');
+ const canonical=header(await rpc.getBlock({blockNumber:boundary.number}),boundary.number);
+ if(canonical.hash!==boundary.hash)throw Error('evidence boundary replaced');
+ return {number:canonical.number,hash:canonical.hash,timestamp:canonical.timestamp};
 }
 function decode(store:Store,log:any){
  const name=Object.entries(store.deployment.addresses).find(([,a])=>a.toLowerCase()===log.address.toLowerCase())?.[0];let decoded:unknown=null;

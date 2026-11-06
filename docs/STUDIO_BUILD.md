@@ -64,3 +64,12 @@ The corrected image built successfully in Studio: Foundry compiled 35 files, the
 Container health and manifest returned HTTP 200. The first two state reads returned HTTP 400 with the generic stale-state response; their underlying cause was not isolated and is not described as a pass. The third returned HTTP 200 in 38.4 seconds, with 11 matching events at block `71046321`, hash `0xa86b4d59a417614d8f131a3d43821168d7790345458570fc4342e1fc9be1f67c`. Through the reviewed preview proxy, a subsequent state read returned HTTP 200 on its first attempt in 34 seconds. RPC signing/sending/admin methods were rejected, and source/env/artifact paths returned 404. This establishes container execution, not a public Vercel URL or real connected-wallet financial replay.
 
 All 14 desktop/mobile visual comparisons passed against unchanged baselines after wallet integration. Studio hosting connections are browser-local; the Vercel connection was confirmed in the owner's Arc browser. The terminal-driven Studio agent cannot use that browser's token. Never copy that token into source or chat.
+
+
+## Read recovery and instance-independent evidence
+
+Observed transient HTTP read failures now receive at most three GET attempts, spaced by one and two seconds. Authentication, missing routes, unsigned POST preparation, network exceptions, successful-response decoding and provenance failures are not retried. No transaction is resubmitted automatically.
+
+Sparse event evidence can resolve a requested canonical block inside a fully validated queried range, even if a different hosting instance did not retain that exact empty-block header. It validates the complete coverage chain, scope and committed cursor, fetches the actual requested header, checks its supplied hash and retains the existing coherent pre/post and per-event provenance checks. Missing coverage, wrong hashes, invalid gaps and replaced boundaries still fail closed.
+
+The integrated build passed, and 61 focused transport/discovery/state-evidence checks passed in the actual checkout. The full frontend suite passed 82 checks in the isolated review copy. Two-instance Anvil verification proved matching pinned evidence when the second instance's retained headers differ; eleven adversarial cases were rejected. These checks do not substitute for an actual published-site smoke test.
