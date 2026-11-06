@@ -5,6 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Errors} from "./lib/Errors.sol";
+import {Types} from "./lib/Types.sol";
 import {InterestMath} from "./lib/InterestMath.sol";
 import {FixedPointMath} from "./lib/FixedPointMath.sol";
 
@@ -45,6 +46,7 @@ contract LoanVault is ReentrancyGuard {
     address public immutable owner;
     address public coverManager;
     mapping(uint256 receiptId => DebtRecord record) private _debts;
+    mapping(uint256 loanId => uint64 deadline) public activeCoverDeadline;
     mapping(uint256 receiptId => uint256 tokenUnits) public backingOf;
     mapping(address token => uint256 tokenUnits) public accountedBacking;
     mapping(uint256 receiptId => uint256 shares) public remainingSnapshotShares;
@@ -95,23 +97,34 @@ contract LoanVault is ReentrancyGuard {
         if (terms.snapshotCollateral == 0 || terms.snapshotCollateral > type(uint128).max) {
             revert Errors.UnsupportedShareAmount();
         }
-        if (terms.snapshotMultiplierNumerator == 0 || terms.snapshotMultiplierDenominator == 0) {
+        if (
+            terms.snapshotMultiplierNumerator == 0 || terms.snapshotMultiplierDenominator == 0
+                || terms.snapshotMultiplierNumerator > Types.MAX_MULTIPLIER_COMPONENT
+                || terms.snapshotMultiplierDenominator > Types.MAX_MULTIPLIER_COMPONENT
+        ) {
             revert Errors.InvalidMultiplier();
         }
         // forge-lint: disable-next-line(block-timestamp)
-        if (terms.startTime != block.timestamp || terms.settlementDeadline <= terms.startTime) {
+        if (
+            terms.startTime != block.timestamp
+                || (terms.settlementDeadline != 0 && terms.settlementDeadline <= terms.startTime)
+        ) {
             revert Errors.InvalidTimeRange();
         }
-        // Reject loans whose maximum funded debt cannot be represented by InterestMath.
-        InterestMath.debt(
-            terms.originalPrincipal,
-            terms.rateNumerator,
-            terms.startTime,
-            terms.settlementDeadline,
-            terms.settlementDeadline,
-            terms.rateDenominator,
-            0
-        );
+        // Legacy finite receipts retain their bounded funded-debt validation.
+        if (terms.settlementDeadline == 0) {
+            InterestMath.interestWide(terms.originalPrincipal, terms.rateNumerator, 0, terms.rateDenominator);
+        } else {
+            InterestMath.debt(
+                terms.originalPrincipal,
+                terms.rateNumerator,
+                terms.startTime,
+                terms.settlementDeadline,
+                terms.settlementDeadline,
+                terms.rateDenominator,
+                0
+            );
+        }
         _debts[receiptId].terms = terms;
         remainingSnapshotShares[receiptId] = terms.snapshotCollateral;
         backingOf[receiptId] = terms.snapshotCollateral;
@@ -122,12 +135,52 @@ contract LoanVault is ReentrancyGuard {
     function debtOf(uint256 receiptId) public view returns (uint256) {
         DebtRecord storage record = _requireDebt(receiptId);
         if (record.closed) return 0;
-        // Safe: past the uint64 deadline, the capped timestamp is the deadline itself.
-        // forge-lint: disable-next-line(block-timestamp)
-        uint64 timestamp = block.timestamp >= record.terms.settlementDeadline
-            ? record.terms.settlementDeadline
-            : uint64(block.timestamp);
+        uint64 cap = record.terms.settlementDeadline;
+        if (cap == 0) cap = activeCoverDeadline[receiptId];
+        if (cap != 0 && block.timestamp >= cap) return _debtAt(record, cap);
+        if (block.timestamp > type(uint64).max) revert Errors.InvalidTimeRange();
+        return _debtAt(record, uint64(block.timestamp));
+    }
+
+    /// @notice Forward debt with the currently active cap and cumulative repayments.
+    function projectedDebtOf(uint256 loanId, uint64 timestamp) external view returns (uint256) {
+        DebtRecord storage record = _requireDebt(loanId);
+        if (timestamp < block.timestamp) revert Errors.InvalidTimeRange();
+        if (record.closed) return 0;
+        uint64 cap = record.terms.settlementDeadline;
+        if (cap == 0) cap = activeCoverDeadline[loanId];
+        if (cap != 0 && timestamp > cap) timestamp = cap;
+        return _debtAt(record, timestamp);
+    }
+
+    function setCoverDeadline(uint256 loanId, uint64 deadline) external onlyManager {
+        DebtRecord storage record = _requireDebt(loanId);
+        if (
+            record.closed || record.terms.settlementDeadline != 0 || activeCoverDeadline[loanId] != 0
+                || deadline <= block.timestamp
+        ) revert Errors.InvalidTimeRange();
+        activeCoverDeadline[loanId] = deadline;
+    }
+
+    function clearCoverDeadline(uint256 loanId) external onlyManager {
+        DebtRecord storage record = _requireDebt(loanId);
+        uint64 deadline = activeCoverDeadline[loanId];
+        if (deadline == 0 || (!record.closed && block.timestamp >= deadline)) revert Errors.InvalidTimeRange();
+        delete activeCoverDeadline[loanId];
+    }
+
+    function _debtAt(DebtRecord storage record, uint64 timestamp) private view returns (uint256) {
         DebtTerms storage t = record.terms;
+        if (t.settlementDeadline == 0) {
+            return InterestMath.debtWide(
+                t.originalPrincipal,
+                t.rateNumerator,
+                t.startTime,
+                timestamp,
+                t.rateDenominator,
+                record.cumulativeDebtReduction
+            );
+        }
         return InterestMath.debt(
             t.originalPrincipal,
             t.rateNumerator,
@@ -194,6 +247,12 @@ contract LoanVault is ReentrancyGuard {
         if (from == address(0)) revert Errors.ZeroAddress();
         uint256 remaining = remainingSnapshotShares[receiptId] + shares;
         if (remaining > type(uint128).max) revert Errors.UnsupportedShareAmount();
+        // Reserve future delivery for every remaining share, including old unwithdrawn claims.
+        if (remaining > (type(uint256).max - outstandingClaimUnits[receiptId]) / Types.MAX_DELIVERY_UNITS_PER_SHARE) {
+            revert Errors.UnsupportedShareAmount();
+        }
+        if (shares == 0) revert Errors.UnsupportedShareAmount();
+        _requireSupportedMultiplier(reportN, reportD);
         uint256 units = _convertedUnits(record.terms, shares, reportN, reportD);
         if (units == 0) revert ZeroDelivery();
         remainingSnapshotShares[receiptId] = remaining;
@@ -230,7 +289,7 @@ contract LoanVault is ReentrancyGuard {
         DebtRecord storage record = _requireDebt(receiptId);
         if (buyer == address(0)) revert Errors.ZeroAddress();
         if (shares == 0 || shares > remainingSnapshotShares[receiptId]) revert Errors.InvalidExerciseShares();
-        if (reportN == 0 || reportD == 0) revert Errors.InvalidMultiplier();
+        _requireSupportedMultiplier(reportN, reportD);
         uint256 units = _convertedUnits(record.terms, shares, reportN, reportD);
         remainingSnapshotShares[receiptId] -= shares;
         outstandingClaimUnits[receiptId] += units;
@@ -273,8 +332,35 @@ contract LoanVault is ReentrancyGuard {
         emit SurplusReleased(receiptId, record.terms.borrower, units);
     }
 
+    /// @notice Delivery conversion in this loan's immutable origination share basis.
+    function deliveryUnitsFor(uint256 loanId, uint256 shares, uint128 reportN, uint128 reportD)
+        external
+        view
+        returns (uint256)
+    {
+        return _convertedUnits(_requireDebt(loanId).terms, shares, reportN, reportD);
+    }
+
+    /// @notice Remove only undeliverable fractional shares; never create a zero-unit claim.
+    /// @dev Backing remains assigned to this loan and returns via the existing surplus handoff.
+    function discardRoundingDust(uint256 loanId, uint256 shares, uint128 reportN, uint128 reportD)
+        external
+        onlyManager
+    {
+        DebtRecord storage record = _requireDebt(loanId);
+        if (shares > remainingSnapshotShares[loanId]) revert Errors.InvalidExerciseShares();
+        if (_convertedUnits(record.terms, shares, reportN, reportD) != 0) revert ZeroDelivery();
+        remainingSnapshotShares[loanId] -= shares;
+    }
+
+    function _requireSupportedMultiplier(uint128 n, uint128 d) private pure {
+        if (n == 0 || d == 0 || n > Types.MAX_MULTIPLIER_COMPONENT || d > Types.MAX_MULTIPLIER_COMPONENT) {
+            revert Errors.InvalidMultiplier();
+        }
+    }
+
     function _convertedUnits(DebtTerms storage terms, uint256 shares, uint128 reportN, uint128 reportD)
-        private
+        internal
         view
         returns (uint256 units)
     {

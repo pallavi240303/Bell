@@ -2,7 +2,7 @@
 pragma solidity 0.8.24;
 
 library QuoteHash {
-    bytes32 internal constant DOMAIN = keccak256("BELL_COVER_QUOTE_V1");
+    bytes32 internal constant DOMAIN = keccak256("BELL_COVER_QUOTE_V2");
 
     /// @dev Static borrower consent only. Inclusion time and funded debt belong in the receipt.
     struct Quote {
@@ -27,6 +27,10 @@ library QuoteHash {
         uint256 weightedStrike;
         uint64 minSettlementDeadline;
         uint64 maxSettlementDeadline;
+        uint256 loanId;
+        uint256 maxDebtAtAcceptance;
+        uint256 maxDebtAtDeadline;
+        bytes32 referenceReportHash;
     }
 
     function hash(address manager, Quote memory quote, bytes32[] memory offerIds, bytes32[] memory termsHashes)

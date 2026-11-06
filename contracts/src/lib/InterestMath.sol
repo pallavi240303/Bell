@@ -49,6 +49,34 @@ library InterestMath {
         return cumulativeDebtReduction >= gross ? 0 : gross - cumulativeDebtReduction;
     }
 
+    /// @notice Original-principal simple interest without the settlement cash-domain limit.
+    /// @dev The numerator is below 2^206 for the supported principal/rate/time domain.
+    function interestWide(
+        uint256 originalPrincipal,
+        uint32 rateNumerator,
+        uint64 elapsedSeconds,
+        uint256 rateDenominator
+    ) internal pure returns (uint256) {
+        _validateCash(originalPrincipal);
+        if (rateNumerator > Types.BPS) revert Errors.UnsupportedRate();
+        if (rateDenominator == 0) revert Errors.ZeroDenominator();
+        return FixedPointMath.mulDivUp(originalPrincipal, uint256(rateNumerator) * elapsedSeconds, rateDenominator);
+    }
+
+    function debtWide(
+        uint256 originalPrincipal,
+        uint32 rateNumerator,
+        uint64 startTime,
+        uint64 timestamp,
+        uint256 rateDenominator,
+        uint256 cumulativeDebtReduction
+    ) internal pure returns (uint256) {
+        if (timestamp < startTime) revert Errors.InvalidTimeRange();
+        uint256 gross =
+            originalPrincipal + interestWide(originalPrincipal, rateNumerator, timestamp - startTime, rateDenominator);
+        return cumulativeDebtReduction >= gross ? 0 : gross - cumulativeDebtReduction;
+    }
+
     function _validateCash(uint256 amount) private pure {
         if (amount > MAX_CASH) revert Errors.UnsupportedCashAmount();
     }

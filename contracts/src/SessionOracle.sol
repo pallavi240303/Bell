@@ -6,6 +6,8 @@ import {Events} from "./lib/Events.sol";
 import {Types} from "./lib/Types.sol";
 
 contract SessionOracle {
+    uint256 private constant MAX_REFERENCE_AGE = 1800;
+
     address public immutable owner;
     address public receiver;
 
@@ -13,6 +15,9 @@ contract SessionOracle {
     mapping(bytes32 sessionId => Types.SessionFact fact) private _sessions;
     mapping(bytes32 sessionId => Types.Benchmark benchmark) private _benchmarks;
     mapping(bytes32 assetId => Types.CorporateActionFact fact) private _corporateActions;
+    mapping(bytes32 assetId => Types.ReferencePriceFact fact) private _references;
+    // A halt permanently invalidates the old fact, including after a later unhalt.
+    mapping(bytes32 assetId => bool invalidated) private _referenceInvalidated;
 
     constructor(address owner_) {
         if (owner_ == address(0)) revert Errors.ZeroAddress();
@@ -61,6 +66,8 @@ contract SessionOracle {
             _acceptBenchmark(report, reportHash);
         } else if (report.kind == Types.MarketEventKind.CORPORATE_ACTION) {
             _acceptCorporateAction(report, reportHash);
+        } else if (report.kind == Types.MarketEventKind.MARKET_PRICE) {
+            _acceptReference(report, reportHash);
         } else if (report.kind == Types.MarketEventKind.HALT) {
             _acceptHalt(report);
         } else {
@@ -96,6 +103,47 @@ contract SessionOracle {
 
     function latestCorporateAction(bytes32 assetId) external view returns (Types.CorporateActionFact memory) {
         return _corporateActions[assetId];
+    }
+
+    function latestReference(bytes32 assetId) external view returns (Types.ReferencePriceFact memory) {
+        return _references[assetId];
+    }
+
+    // Bounded inspectable facts for a single pinned CRE chain read. No freshness
+    // filtering: a producer must validate the returned evidence and current clock.
+    function marketSnapshot(bytes32 assetId, bytes32 sessionId, bytes32 referenceSessionId)
+        external
+        view
+        returns (
+            Types.AssetState memory state,
+            Types.SessionFact memory session,
+            Types.SessionFact memory activeSession,
+            Types.Benchmark memory benchmark,
+            Types.Benchmark memory referenceBenchmark,
+            Types.CorporateActionFact memory corporate,
+            Types.ReferencePriceFact memory referenceFact
+        )
+    {
+        state = _assetStates[assetId];
+        if (state.nextNonce == 0) state.nextNonce = 1;
+        session = _sessions[sessionId];
+        activeSession = _sessions[state.activeSessionId];
+        benchmark = _benchmarks[sessionId];
+        referenceBenchmark = _benchmarks[referenceSessionId];
+        corporate = _corporateActions[assetId];
+        referenceFact = _references[assetId];
+    }
+
+    function requireFreshReference(bytes32 assetId) external view returns (Types.ReferencePriceFact memory fact) {
+        fact = _references[assetId];
+        Types.AssetState storage state = _assetStates[assetId];
+        if (state.halted) revert Errors.AssetHalted(assetId);
+        if (
+            fact.reportHash == bytes32(0) || _referenceInvalidated[assetId] || fact.sessionId != state.activeSessionId
+                || fact.configHash != state.configHash || fact.corporateActionHash != state.latestCorporateActionHash
+        ) revert Errors.ReferenceUnavailable(assetId);
+        _requireReferenceSessionOpen(assetId, state);
+        _requireReferenceTime(fact.observedAt, fact.validUntil);
     }
 
     function _validateCommon(Types.MarketEventReport calldata report) private view {
@@ -183,7 +231,11 @@ contract SessionOracle {
             revert Errors.InvalidSessionTiming();
         }
         if (report.benchmarkPrice == 0) revert Errors.ZeroBenchmarkPrice();
-        if (report.multiplierNumerator == 0 || report.multiplierDenominator == 0) {
+        if (
+            report.multiplierNumerator == 0 || report.multiplierDenominator == 0
+                || report.multiplierNumerator > Types.MAX_MULTIPLIER_COMPONENT
+                || report.multiplierDenominator > Types.MAX_MULTIPLIER_COMPONENT
+        ) {
             revert Errors.InvalidMultiplier();
         }
         if (report.secondarySourceHash == bytes32(0)) revert Errors.MissingSourceEvidence();
@@ -206,6 +258,79 @@ contract SessionOracle {
         });
     }
 
+    function _acceptReference(Types.MarketEventReport calldata report, bytes32 reportHash) private {
+        Types.AssetState storage state = _assetStates[report.assetId];
+        Types.SessionFact storage session = _requireReferenceSessionOpen(report.assetId, state);
+        if (
+            report.scheduledOpen != session.scheduledOpen || report.scheduledClose != session.scheduledClose
+                || report.observedAt < session.scheduledOpen || report.observedAt >= session.scheduledClose
+        ) revert Errors.InvalidSessionTiming();
+        if (report.benchmarkPrice == 0 || report.benchmarkPrice > type(uint96).max) {
+            revert Errors.UnsupportedPrice();
+        }
+        if (report.corporateAction != Types.CorporateAction.NONE || report.actionId != bytes32(0)) {
+            revert Errors.InvalidReferenceAction();
+        }
+        Types.CorporateActionFact storage action = _corporateActions[report.assetId];
+        if (action.reportHash != bytes32(0) && report.observedAt < action.observedAt) {
+            revert Errors.InvalidSessionTiming();
+        }
+        uint128 numerator = action.reportHash == bytes32(0) ? 1 : action.multiplierNumerator;
+        uint128 denominator = action.reportHash == bytes32(0) ? 1 : action.multiplierDenominator;
+        if (report.multiplierNumerator != numerator || report.multiplierDenominator != denominator) {
+            revert Errors.InvalidMultiplier();
+        }
+        if (report.secondarySourceHash == bytes32(0)) revert Errors.MissingSourceEvidence();
+        if (report.primarySourceHash == report.secondarySourceHash) revert Errors.DuplicateSourceEvidence();
+        _requireReferenceTime(report.observedAt, report.validUntil);
+        uint64 previousObservedAt = _references[report.assetId].observedAt;
+        if (report.observedAt <= previousObservedAt) {
+            revert Errors.NonMonotonicReference(previousObservedAt, report.observedAt);
+        }
+        _references[report.assetId] = Types.ReferencePriceFact({
+            assetId: report.assetId,
+            sessionId: state.activeSessionId,
+            configHash: report.configHash,
+            price: report.benchmarkPrice,
+            multiplierNumerator: report.multiplierNumerator,
+            multiplierDenominator: report.multiplierDenominator,
+            observedAt: report.observedAt,
+            validUntil: report.validUntil,
+            corporateActionHash: state.latestCorporateActionHash,
+            primarySourceHash: report.primarySourceHash,
+            secondarySourceHash: report.secondarySourceHash,
+            reportHash: reportHash
+        });
+        _referenceInvalidated[report.assetId] = false;
+    }
+
+    function _requireReferenceSessionOpen(bytes32 assetId, Types.AssetState storage state)
+        private
+        view
+        returns (Types.SessionFact storage session)
+    {
+        if (state.halted) revert Errors.AssetHalted(assetId);
+        session = _sessions[state.activeSessionId];
+        if (
+            state.activeSessionId == bytes32(0) || session.phase != Types.SessionPhase.SCHEDULED
+                || session.assetId != assetId || session.configHash != state.configHash
+                || block.timestamp < session.scheduledOpen || block.timestamp >= session.scheduledClose
+        ) revert Errors.ReferenceSessionNotOpen(state.activeSessionId);
+    }
+
+    function _requireReferenceTime(uint64 observedAt, uint64 validUntil) private view {
+        if (observedAt > block.timestamp) {
+            revert Errors.FutureObservation(observedAt, uint64(block.timestamp));
+        }
+        if (validUntil < block.timestamp) revert Errors.ReportExpired(validUntil, uint64(block.timestamp));
+        if (block.timestamp - observedAt > MAX_REFERENCE_AGE) {
+            revert Errors.StaleReference(observedAt, uint64(block.timestamp));
+        }
+        if (validUntil < observedAt || uint256(validUntil) > uint256(observedAt) + MAX_REFERENCE_AGE) {
+            revert Errors.InvalidReferenceValidity();
+        }
+    }
+
     function _acceptCorporateAction(Types.MarketEventReport calldata report, bytes32 reportHash) private {
         if (
             report.corporateAction != Types.CorporateAction.SPLIT
@@ -214,7 +339,11 @@ contract SessionOracle {
             revert Errors.UnsupportedCorporateAction(report.corporateAction);
         }
         if (report.actionId == bytes32(0)) revert Errors.ZeroActionId();
-        if (report.multiplierNumerator == 0 || report.multiplierDenominator == 0) {
+        if (
+            report.multiplierNumerator == 0 || report.multiplierDenominator == 0
+                || report.multiplierNumerator > Types.MAX_MULTIPLIER_COMPONENT
+                || report.multiplierDenominator > Types.MAX_MULTIPLIER_COMPONENT
+        ) {
             revert Errors.InvalidMultiplier();
         }
         _corporateActions[report.assetId] = Types.CorporateActionFact({
@@ -230,6 +359,7 @@ contract SessionOracle {
 
     function _acceptHalt(Types.MarketEventReport calldata report) private {
         _assetStates[report.assetId].halted = report.halted;
+        if (report.halted) _referenceInvalidated[report.assetId] = true;
     }
 
     function _requireSessionIdentity(Types.SessionFact storage fact, Types.MarketEventReport calldata report)

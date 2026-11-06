@@ -12,29 +12,46 @@ import {ProtectedPool, IPoolDebtProvider} from "./ProtectedPool.sol";
 import {LoanVault} from "./LoanVault.sol";
 import {Errors} from "./lib/Errors.sol";
 import {FixedPointMath} from "./lib/FixedPointMath.sol";
-import {InterestMath} from "./lib/InterestMath.sol";
+import {LoanManager} from "./LoanManager.sol";
+import {LiquidationMath} from "./lib/LiquidationMath.sol";
 import {SettlementMath} from "./lib/SettlementMath.sol";
 import {QuoteHash} from "./lib/QuoteHash.sol";
 import {Types} from "./lib/Types.sol";
 
-contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
+contract CoverManager is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     enum ReceiptStatus {
         NONE,
         ACTIVE,
-        HANDOFF_PENDING,
-        CLOSED
+        ENDED
+    }
+
+    enum Profile {
+        LIVE,
+        REPLAY
+    }
+    enum Outcome {
+        HEALTHY,
+        TARGET_REACHED,
+        FULL_CLOSURE,
+        REPAID,
+        LIQUIDATED,
+        TERMINAL
     }
 
     struct Receipt {
+        uint256 loanId;
         QuoteHash.Quote consent;
         Types.AssetConfig config;
         bytes32 quoteHash;
         bytes32[] offerIds;
         bytes32[] offerTermsHashes;
         uint64 startTime;
+        uint64 opensAt;
+        uint64 cutoffAt;
         uint64 settlementDeadline;
+        uint256 debtAtAcceptance;
         uint256 debtCeiling;
         ReceiptStatus status;
         bytes32 benchmarkReportHash;
@@ -46,7 +63,10 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
     struct BorrowValidation {
         Types.AssetConfig config;
         uint64 startTime;
+        uint64 opensAt;
+        uint64 cutoffAt;
         uint64 settlementDeadline;
+        uint256 debtAtAcceptance;
         uint256 debtCeiling;
         uint16 borrowerLtvBps;
     }
@@ -80,7 +100,14 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
     uint256 public nextReceiptId = 1;
     mapping(address => uint256) public borrowerNonce;
     mapping(uint256 receiptId => Receipt receipt) private _receipts;
-    bool private _cashDebtTransition;
+    LoanManager public immutable loanManager;
+    Profile public immutable profile;
+    uint64 public immutable coverOpensBeforeClose;
+    uint64 public immutable coverCutoffBeforeClose;
+    error InvalidPolicy();
+    error InvalidLoanConsent();
+    error DebtLimitExceeded();
+    error InvalidCoverWindow();
 
     AssetRegistry public immutable registry;
     SessionOracle public immutable oracle;
@@ -88,19 +115,18 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
     ProtectedPool public immutable pool;
     LoanVault public immutable vault;
 
-    event CoveredBorrowCreated(
+    event CoverPurchased(
         uint256 indexed receiptId,
-        address indexed borrower,
+        uint256 indexed loanId,
         bytes32 indexed sessionId,
         bytes32 quoteHash,
-        uint256 principal,
-        uint64 startTime,
-        uint64 settlementDeadline,
-        uint256 debtCeiling
+        uint256 debtAtAcceptance,
+        uint256 debtCeiling,
+        uint64 opensAt,
+        uint64 cutoffAt,
+        uint64 settlementDeadline
     );
-    event Repaid(uint256 indexed receiptId, address indexed payer, uint256 amount, uint256 debtAfter);
-    event CollateralAdded(uint256 indexed receiptId, address indexed payer, uint256 snapshotShares);
-    event CollateralWithdrawn(uint256 indexed receiptId, address indexed borrower, uint256 snapshotShares);
+    event CoverEnded(uint256 indexed receiptId, uint256 indexed loanId, uint8 outcome);
     event BenchmarkProcessed(
         uint256 indexed receiptId,
         bytes32 indexed reportHash,
@@ -115,32 +141,47 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
         uint256 additionalShares,
         uint256 debtApplied
     );
-    event FinanciallyClosed(uint256 indexed receiptId, uint256 borrowerClaimId);
-    event HandoffPending(uint256 indexed receiptId);
-    event ReceiptClosed(uint256 indexed receiptId);
 
-    constructor(address registry_, address oracle_, address book_, address pool_, address vault_) {
+    constructor(
+        address registry_,
+        address oracle_,
+        address book_,
+        address pool_,
+        address vault_,
+        address loanManager_,
+        Profile profile_
+    ) {
         if (
             registry_ == address(0) || oracle_ == address(0) || book_ == address(0) || pool_ == address(0)
-                || vault_ == address(0)
+                || vault_ == address(0) || loanManager_ == address(0)
         ) {
             revert Errors.ZeroAddress();
         }
+        loanManager = LoanManager(loanManager_);
+        profile = profile_;
+        coverOpensBeforeClose = profile_ == Profile.LIVE ? 7200 : 600;
+        coverCutoffBeforeClose = profile_ == Profile.LIVE ? 1800 : 60;
         registry = AssetRegistry(registry_);
         oracle = SessionOracle(oracle_);
         book = CommitmentBook(book_);
         pool = ProtectedPool(pool_);
         vault = LoanVault(vault_);
-        if (address(book.cashToken()) != address(pool.cashToken())) revert ComponentMismatch();
+        if (
+            address(book.cashToken()) != address(pool.cashToken()) || address(loanManager.registry()) != registry_
+                || address(loanManager.oracle()) != oracle_ || address(loanManager.pool()) != pool_
+                || address(loanManager.vault()) != vault_
+        ) revert ComponentMismatch();
     }
 
-    /// @notice Direct borrower consent reserves the exact all-or-nothing lots and creates a funded loan.
-    function borrowWithCover(
+    /// @notice Attach fully funded session cover to an existing ordinary loan.
+    function buyCover(
+        uint256 loanId,
         QuoteHash.Quote calldata quote,
         bytes32[] calldata offerIds,
         bytes32[] calldata termsHashes,
         bytes32 expectedQuoteHash
     ) external nonReentrant returns (uint256 receiptId) {
+        if (loanId != quote.loanId) revert InvalidLoanConsent();
         if (quote.borrower != msg.sender) revert InvalidBorrower();
         if (quote.borrowerNonce != borrowerNonce[msg.sender]) revert InvalidBorrowerNonce();
         if (quote.recipient == address(0)) revert Errors.ZeroAddress();
@@ -154,13 +195,17 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
         receiptId = nextReceiptId++;
         borrowerNonce[msg.sender] += 1;
         _receipts[receiptId] = Receipt({
+            loanId: loanId,
             consent: quote,
             config: valid.config,
             quoteHash: identity,
             offerIds: offerIds,
             offerTermsHashes: termsHashes,
             startTime: valid.startTime,
+            opensAt: valid.opensAt,
+            cutoffAt: valid.cutoffAt,
             settlementDeadline: valid.settlementDeadline,
+            debtAtAcceptance: valid.debtAtAcceptance,
             debtCeiling: valid.debtCeiling,
             status: ReceiptStatus.ACTIVE,
             benchmarkReportHash: bytes32(0),
@@ -168,38 +213,25 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
             latestMultiplierNumerator: quote.snapshotMultiplierNumerator,
             latestMultiplierDenominator: quote.snapshotMultiplierDenominator
         });
+        loanManager.beginCover(loanId, receiptId, quote.sessionId, valid.settlementDeadline);
         _fundReceipt(receiptId, valid.borrowerLtvBps);
-        emit CoveredBorrowCreated(
+        loanManager.completeCoverActivation(loanId, receiptId);
+        emit CoverPurchased(
             receiptId,
-            quote.borrower,
+            loanId,
             quote.sessionId,
             identity,
-            quote.principal,
-            valid.startTime,
-            valid.settlementDeadline,
-            valid.debtCeiling
+            valid.debtAtAcceptance,
+            valid.debtCeiling,
+            valid.opensAt,
+            valid.cutoffAt,
+            valid.settlementDeadline
         );
     }
 
     function _fundReceipt(uint256 receiptId, uint16 borrowerLtvBps) private {
         Receipt storage receipt = _receipts[receiptId];
         QuoteHash.Quote storage quote = receipt.consent;
-        vault.createDebt(
-            receiptId,
-            LoanVault.DebtTerms({
-                borrower: quote.borrower,
-                assetId: quote.assetId,
-                assetToken: receipt.config.assetToken,
-                originalPrincipal: quote.principal,
-                rateNumerator: receipt.config.rateNumerator,
-                rateDenominator: receipt.config.rateDenominator,
-                startTime: receipt.startTime,
-                settlementDeadline: receipt.settlementDeadline,
-                snapshotCollateral: quote.collateralShares,
-                snapshotMultiplierNumerator: quote.snapshotMultiplierNumerator,
-                snapshotMultiplierDenominator: quote.snapshotMultiplierDenominator
-            })
-        );
         for (uint256 i; i < receipt.offerIds.length; ++i) {
             book.reserveOffer(
                 receipt.offerIds[i],
@@ -211,10 +243,6 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
                 borrowerLtvBps
             );
         }
-        // Registration is adjacent to guarded disbursement: token callbacks during collateral
-        // or premium pulls cannot observe an inflated pool NAV before the principal leaves.
-        pool.registerLoan(receiptId);
-        pool.disburse(quote.recipient, quote.principal);
     }
 
     function getReceipt(uint256 receiptId) external view returns (Receipt memory) {
@@ -222,65 +250,41 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
         return _receipts[receiptId];
     }
 
-    function debtOf(uint256 receiptId) external view returns (uint256) {
-        // Prevent pool pricing against temporarily double-counted cash and debt during token callbacks.
-        if (_cashDebtTransition) revert CashDebtTransition();
-        return vault.debtOf(receiptId);
+    function reservedShares(uint256 receiptId) external view returns (uint256) {
+        Receipt storage receipt = _receipts[receiptId];
+        return receipt.status == ReceiptStatus.ACTIVE ? receipt.consent.totalOfferShares : 0;
     }
 
-    function repay(uint256 receiptId, uint256 amount) external nonReentrant {
-        Receipt storage receipt = _active(receiptId);
-        uint256 debt = vault.debtOf(receiptId);
-        if (amount == 0 || amount > debt) revert Errors.InvalidDebtApplied();
-        _cashDebtTransition = true;
-        _pullRepayment(msg.sender, amount);
-        _reduceDebt(receiptId, amount);
-        _cashDebtTransition = false;
-        emit Repaid(receiptId, msg.sender, amount, debt - amount);
-        if (amount == debt) _financialClose(receiptId, receipt);
-    }
-
-    function addCollateral(uint256 receiptId, uint256 snapshotShares) external nonReentrant {
-        Receipt storage receipt = _active(receiptId);
-        vault.addCollateral(
-            receiptId,
-            msg.sender,
-            snapshotShares,
-            receipt.latestMultiplierNumerator,
-            receipt.latestMultiplierDenominator
+    function policyHash(bytes32 assetId, bytes32 sessionId, bytes32 configHash, uint128 loanN, uint128 loanD)
+        public
+        view
+        returns (bytes32)
+    {
+        return keccak256(
+            abi.encode(
+                keccak256("BELL_SESSION_COVER_POLICY_V1"),
+                block.chainid,
+                address(this),
+                assetId,
+                sessionId,
+                configHash,
+                loanN,
+                loanD,
+                profile,
+                coverOpensBeforeClose,
+                coverCutoffBeforeClose
+            )
         );
-        emit CollateralAdded(receiptId, msg.sender, snapshotShares);
     }
 
-    function withdrawCollateral(uint256 receiptId, uint256 snapshotShares) external nonReentrant {
-        Receipt storage receipt = _active(receiptId);
-        if (msg.sender != receipt.consent.borrower) revert InvalidBorrower();
-        _beforeDeadline(receipt);
-        uint256 collateral = vault.remainingSnapshotShares(receiptId);
-        if (snapshotShares == 0 || snapshotShares > collateral) revert Errors.InvalidExerciseShares();
-        uint256 afterShares = collateral - snapshotShares;
-        uint256 reservedShares;
-        for (uint256 i; i < receipt.offerIds.length; ++i) {
-            Types.Offer memory offer = book.getOffer(receipt.offerIds[i]);
-            reservedShares += offer.terms.snapshotShares - offer.cumulativeExercisedShares;
-        }
-        if (afterShares < reservedShares) revert ReservedCollateral();
-        uint256 price = receipt.benchmarkReportHash == bytes32(0)
-            ? receipt.consent.referencePrice
-            : receipt.benchmarkValuePerSnapshotShare;
-        if (!SettlementMath.isAtOrBelowTarget(
-                vault.debtOf(receiptId), afterShares, price, receipt.config.originationLtvBps
-            )) {
-            revert Errors.BorrowerLtvTooHigh();
-        }
-        vault.releaseCollateral(
-            receiptId,
-            msg.sender,
-            snapshotShares,
-            receipt.latestMultiplierNumerator,
-            receipt.latestMultiplierDenominator
-        );
-        emit CollateralWithdrawn(receiptId, msg.sender, snapshotShares);
+    function releaseForLoanClosure(uint256 receiptId) external nonReentrant {
+        if (msg.sender != address(loanManager)) revert Errors.UnauthorizedManager(msg.sender);
+        _end(receiptId, _active(receiptId), Outcome.REPAID);
+    }
+
+    function releaseForLiquidation(uint256 receiptId) external nonReentrant {
+        if (msg.sender != address(loanManager)) revert Errors.UnauthorizedManager(msg.sender);
+        _end(receiptId, _active(receiptId), Outcome.LIQUIDATED);
     }
 
     function settle(uint256 receiptId) external nonReentrant {
@@ -308,34 +312,20 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
         emit BenchmarkProcessed(
             receiptId, benchmark.reportHash, price, benchmark.multiplierNumerator, benchmark.multiplierDenominator
         );
-        _executePlan(receiptId, receipt, price);
+        _executePlan(receiptId, receipt, price, false);
     }
 
     function terminalSettle(uint256 receiptId) external nonReentrant {
         Receipt storage receipt = _active(receiptId);
         // forge-lint: disable-next-line(block-timestamp)
         if (block.timestamp < receipt.settlementDeadline) revert SettlementDeadlineNotReached();
-        _executePlan(receiptId, receipt, 0);
-        if (vault.debtOf(receiptId) != 0) revert Errors.InvalidDebtApplied();
+        Types.CorporateActionFact memory action = oracle.latestCorporateAction(receipt.consent.assetId);
+        receipt.latestMultiplierNumerator = action.reportHash == bytes32(0) ? 1 : action.multiplierNumerator;
+        receipt.latestMultiplierDenominator = action.reportHash == bytes32(0) ? 1 : action.multiplierDenominator;
+        _executePlan(receiptId, receipt, 0, true);
     }
 
-    /// @notice Anyone can fund physical delivery without changing economic collateral or debt.
-    function topUpBacking(uint256 receiptId, uint256 tokenUnits) external nonReentrant {
-        Receipt storage receipt = _receipt(receiptId);
-        if (receipt.status == ReceiptStatus.CLOSED) revert ReceiptNotPending();
-        vault.topUpBacking(receiptId, msg.sender, tokenUnits);
-    }
-
-    function finalizeHandoff(uint256 receiptId) external nonReentrant {
-        Receipt storage receipt = _receipt(receiptId);
-        if (receipt.status != ReceiptStatus.HANDOFF_PENDING) revert ReceiptNotPending();
-        if (vault.outstandingClaimUnits(receiptId) != 0) revert HandoffIncomplete();
-        vault.releaseSurplus(receiptId);
-        receipt.status = ReceiptStatus.CLOSED;
-        emit ReceiptClosed(receiptId);
-    }
-
-    function _executePlan(uint256 receiptId, Receipt storage receipt, uint256 price) private {
+    function _executePlan(uint256 receiptId, Receipt storage receipt, uint256 price, bool terminal) private {
         uint256 length = receipt.offerIds.length;
         SettlementMath.LotState[] memory lots = new SettlementMath.LotState[](length);
         for (uint256 i; i < length; ++i) {
@@ -345,76 +335,52 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
             );
         }
         SettlementMath.Plan memory plan = SettlementMath.planNormal(
-            vault.debtOf(receiptId),
-            vault.remainingSnapshotShares(receiptId),
+            vault.debtOf(receipt.loanId),
+            vault.remainingSnapshotShares(receipt.loanId),
             price,
             receipt.config.triggerLtvBps,
             receipt.config.targetLtvBps,
             lots
         );
+        loanManager.beginCoverSettlement(receipt.loanId, receiptId);
         for (uint256 i; i < length; ++i) {
             SettlementMath.Fill memory fill = plan.fills[i];
             if (fill.additionalShares == 0) continue;
-            bytes32 offerId = receipt.offerIds[i];
-            _cashDebtTransition = true;
-            book.exerciseOffer(
-                offerId, lots[i].exercisedShares + fill.additionalShares, fill.debtApplied, receipt.consent.borrower
-            );
-            _reduceDebt(receiptId, fill.debtApplied);
-            _cashDebtTransition = false;
-            uint256 claimId = _claim(receiptId, receipt, book.getOffer(offerId).buyer, fill.additionalShares);
-            emit ReceiptOfferExercised(receiptId, offerId, claimId, fill.additionalShares, fill.debtApplied);
+            _applyFill(receiptId, receipt, receipt.offerIds[i], lots[i].exercisedShares, fill);
         }
-        if (plan.debtAfter == 0) _financialClose(receiptId, receipt);
-    }
-
-    function _claim(uint256 receiptId, Receipt storage receipt, address beneficiary, uint256 shares)
-        private
-        returns (uint256)
-    {
-        // Claims are immediately mature. Capping a late terminal timestamp avoids narrowing overflow.
-        uint64 maturity = receipt.settlementDeadline;
-        // forge-lint: disable-next-line(block-timestamp)
-        if (block.timestamp < maturity) maturity = uint64(block.timestamp);
-        return vault.recordClaim(
-            receiptId,
-            beneficiary,
-            shares,
-            receipt.latestMultiplierNumerator,
-            receipt.latestMultiplierDenominator,
-            maturity
+        Outcome outcome = terminal ? Outcome.TERMINAL : Outcome(uint8(plan.outcome));
+        _end(receiptId, receipt, outcome);
+        loanManager.finishCoverSettlement(
+            receipt.loanId, receiptId, receipt.latestMultiplierNumerator, receipt.latestMultiplierDenominator, terminal
         );
     }
 
-    function _financialClose(uint256 receiptId, Receipt storage receipt) private {
+    function _applyFill(
+        uint256 receiptId,
+        Receipt storage receipt,
+        bytes32 offerId,
+        uint256 exercised,
+        SettlementMath.Fill memory fill
+    ) private {
+        book.exerciseOffer(offerId, exercised + fill.additionalShares, fill.debtApplied, receipt.consent.borrower);
+        uint256 claimId = loanManager.applyCoverFill(
+            receipt.loanId,
+            receiptId,
+            fill.debtApplied,
+            book.getOffer(offerId).buyer,
+            fill.additionalShares,
+            receipt.latestMultiplierNumerator,
+            receipt.latestMultiplierDenominator
+        );
+        emit ReceiptOfferExercised(receiptId, offerId, claimId, fill.additionalShares, fill.debtApplied);
+    }
+
+    function _end(uint256 receiptId, Receipt storage receipt, Outcome outcome) private {
         for (uint256 i; i < receipt.offerIds.length; ++i) {
             book.releaseOffer(receipt.offerIds[i]);
         }
-        pool.closeLoan(receiptId);
-        uint256 shares = vault.remainingSnapshotShares(receiptId);
-        uint256 borrowerClaimId;
-        if (shares != 0) borrowerClaimId = _claim(receiptId, receipt, receipt.consent.borrower, shares);
-        receipt.status = ReceiptStatus.HANDOFF_PENDING;
-        emit FinanciallyClosed(receiptId, borrowerClaimId);
-        emit HandoffPending(receiptId);
-    }
-
-    function _reduceDebt(uint256 receiptId, uint256 amount) private {
-        vault.reduceDebt(receiptId, vault.cumulativeDebtReductionOf(receiptId) + amount);
-    }
-
-    function _pullRepayment(address payer, uint256 amount) private {
-        IERC20 token = IERC20(address(pool.cashToken()));
-        if (payer == address(pool)) revert Errors.InvalidTokenBalanceDelta(amount, 0);
-        uint256 payerBefore = token.balanceOf(payer);
-        uint256 poolBefore = token.balanceOf(address(pool));
-        token.safeTransferFrom(payer, address(pool), amount);
-        uint256 payerAfter = token.balanceOf(payer);
-        uint256 poolAfter = token.balanceOf(address(pool));
-        uint256 spent = payerBefore >= payerAfter ? payerBefore - payerAfter : 0;
-        uint256 received = poolAfter >= poolBefore ? poolAfter - poolBefore : 0;
-        if (spent != amount) revert Errors.InvalidTokenBalanceDelta(amount, spent);
-        if (received != amount) revert Errors.InvalidTokenBalanceDelta(amount, received);
+        receipt.status = ReceiptStatus.ENDED;
+        emit CoverEnded(receiptId, receipt.loanId, uint8(outcome));
     }
 
     function _beforeDeadline(Receipt storage receipt) private view {
@@ -434,8 +400,9 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
 
     function _requireBindings() private view {
         if (
-            book.coverManager() != address(this) || pool.coverManager() != address(this)
-                || vault.coverManager() != address(this) || book.protectedPool() != address(pool)
+            book.coverManager() != address(this) || pool.coverManager() != address(loanManager)
+                || vault.coverManager() != address(loanManager) || book.protectedPool() != address(pool)
+                || loanManager.coverManager() != address(this)
         ) {
             revert ComponentMismatch();
         }
@@ -461,18 +428,6 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
         if (quote.principal == 0 || quote.principal > type(uint128).max) revert Errors.UnsupportedCashAmount();
         if (quote.collateralShares == 0 || quote.collateralShares > type(uint128).max) revert InvalidCollateral();
         if (quote.referencePrice == 0 || quote.referencePrice > type(uint96).max) revert Errors.UnsupportedPrice();
-        if (!SettlementMath.isAtOrBelowTarget(
-                quote.principal, quote.collateralShares, quote.referencePrice, valid.config.originationLtvBps
-            )) {
-            revert Errors.BorrowerLtvTooHigh();
-        }
-        // Bounds above keep both products below 256 bits. Round only the final ratio.
-        uint256 ltv = FixedPointMath.mulDivUp(
-            quote.principal, uint256(Types.BPS) * 1e18, quote.collateralShares * quote.referencePrice
-        );
-        // Safe: the exact origination check bounds the rounded LTV by config.originationLtvBps.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        valid.borrowerLtvBps = uint16(ltv);
         uint256 capacity;
         (valid.settlementDeadline, capacity) = _validateOffers(quote, offerIds, termsHashes);
         if (
@@ -482,16 +437,43 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
         // Safe: the validated uint64 scheduled close is strictly after block.timestamp.
         // forge-lint: disable-next-line(unsafe-typecast)
         valid.startTime = uint64(block.timestamp);
-        valid.debtCeiling = InterestMath.debt(
-            quote.principal,
-            valid.config.rateNumerator,
-            valid.startTime,
-            valid.settlementDeadline,
-            valid.settlementDeadline,
-            valid.config.rateDenominator,
-            0
-        );
+        _validateLoan(quote, valid);
+        valid.opensAt = scheduledClose - coverOpensBeforeClose;
+        valid.cutoffAt = scheduledClose - coverCutoffBeforeClose;
         if (capacity < valid.debtCeiling) revert Errors.InsufficientFundedCapacity(capacity, valid.debtCeiling);
+    }
+
+    function _validateLoan(QuoteHash.Quote calldata quote, BorrowValidation memory valid) private view {
+        LoanManager.CoverSnapshot memory loan = loanManager.coverSnapshot(quote.loanId, valid.settlementDeadline);
+        LoanManager.Loan memory metadata = loanManager.getLoan(quote.loanId);
+        if (
+            loan.borrower != quote.borrower || loan.recipient != quote.recipient || loan.assetId != quote.assetId
+                || loan.originalPrincipal != quote.principal || loan.remainingCollateralShares != quote.collateralShares
+                || loan.loanSnapshotMultiplierNumerator != quote.snapshotMultiplierNumerator
+                || loan.loanSnapshotMultiplierDenominator != quote.snapshotMultiplierDenominator
+        ) revert InvalidLoanConsent();
+        if (
+            metadata.config.assetToken != valid.config.assetToken
+                || metadata.config.stockTokenDecimals != valid.config.stockTokenDecimals
+                || metadata.config.cashTokenDecimals != valid.config.cashTokenDecimals
+        ) revert ComponentMismatch();
+        uint16 trigger = metadata.config.triggerLtvBps < valid.config.triggerLtvBps
+            ? metadata.config.triggerLtvBps
+            : valid.config.triggerLtvBps;
+        if (loan.debtNow > LiquidationMath.debtLimit(quote.collateralShares, quote.referencePrice, trigger)) {
+            revert Errors.BorrowerLtvTooHigh();
+        }
+        valid.borrowerLtvBps = uint16(
+            FixedPointMath.mulDivUp(
+                loan.debtNow, uint256(Types.BPS) * 1e18, quote.collateralShares * quote.referencePrice
+            )
+        );
+        valid.debtAtAcceptance = loan.debtNow;
+        valid.debtCeiling = loan.debtAtDeadline;
+        if (valid.debtCeiling > type(uint128).max) revert Errors.UnsupportedCashAmount();
+        if (loan.debtNow > quote.maxDebtAtAcceptance || loan.debtAtDeadline > quote.maxDebtAtDeadline) {
+            revert DebtLimitExceeded();
+        }
     }
 
     function _validateReferenceFacts(QuoteHash.Quote calldata quote) private view returns (uint64 scheduledClose) {
@@ -510,11 +492,37 @@ contract CoverManager is ReentrancyGuard, IPoolDebtProvider {
         ) revert ReferenceFactsMismatch();
         Types.CorporateActionFact memory action = oracle.latestCorporateAction(quote.assetId);
         if (action.reportHash != quote.corporateActionHash) revert ReferenceFactsMismatch();
-        uint128 numerator = action.reportHash == bytes32(0) ? 1 : action.multiplierNumerator;
-        uint128 denominator = action.reportHash == bytes32(0) ? 1 : action.multiplierDenominator;
-        if (quote.snapshotMultiplierNumerator != numerator || quote.snapshotMultiplierDenominator != denominator) {
-            revert ReferenceFactsMismatch();
+        if (session.scheduledClose < coverOpensBeforeClose) revert InvalidCoverWindow();
+        uint64 opens = session.scheduledClose - coverOpensBeforeClose;
+        uint64 cutoff = session.scheduledClose - coverCutoffBeforeClose;
+        if (
+            session.scheduledOpen > opens || opens >= cutoff || cutoff >= session.scheduledClose
+                || block.timestamp < opens || block.timestamp >= cutoff
+        ) revert InvalidCoverWindow();
+        if (quote.snapshotMultiplierNumerator == 0 || quote.snapshotMultiplierDenominator == 0) {
+            revert Errors.InvalidMultiplier();
         }
+        Types.ReferencePriceFact memory fact = oracle.requireFreshReference(quote.assetId);
+        if (
+            fact.reportHash != quote.referenceReportHash || fact.configHash != quote.configHash
+                || fact.sessionId != quote.sessionId
+                || quote.referencePrice
+                    != FixedPointMath.mulDivDown(
+                        fact.price,
+                        uint256(fact.multiplierNumerator) * quote.snapshotMultiplierDenominator,
+                        uint256(fact.multiplierDenominator) * quote.snapshotMultiplierNumerator
+                    )
+        ) revert ReferenceFactsMismatch();
+        if (
+            quote.policyHash
+                != policyHash(
+                    quote.assetId,
+                    quote.sessionId,
+                    quote.configHash,
+                    quote.snapshotMultiplierNumerator,
+                    quote.snapshotMultiplierDenominator
+                )
+        ) revert InvalidPolicy();
         return session.scheduledClose;
     }
 

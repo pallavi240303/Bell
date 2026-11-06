@@ -23,14 +23,17 @@ contract SimulationMarketEventReceiver is IReceiver {
 
     function onReport(bytes calldata metadata, bytes calldata report) external {
         if (msg.sender != forwarder) revert Errors.UnauthorizedReceiver(msg.sender);
-        if (metadata.length != 0 && metadata.length != 62) revert Errors.InvalidMetadataLength(metadata.length);
+        if (metadata.length != 0 && metadata.length != 62 && metadata.length != 64) {
+            revert Errors.InvalidMetadataLength(metadata.length);
+        }
         bytes32 id;
         bytes10 name;
         address owner;
-        if (metadata.length == 62) {
+        if (metadata.length != 0) {
             id = bytes32(metadata[0:32]);
             name = bytes10(metadata[32:42]);
             owner = address(bytes20(metadata[42:62]));
+            // Current CRE metadata appends a two-byte report ID after the identity.
         }
         if (report.length != 21 * 32) revert Errors.InvalidReportLength(report.length);
         Types.MarketEventReport memory decoded = abi.decode(report, (Types.MarketEventReport));

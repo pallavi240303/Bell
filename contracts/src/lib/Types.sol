@@ -3,6 +3,10 @@ pragma solidity 0.8.24;
 
 library Types {
     uint16 internal constant BPS = 10_000;
+    // Monetary multiplier components are bounded; wire/storage fields remain uint128.
+    uint128 internal constant MAX_MULTIPLIER_COMPONENT = type(uint64).max;
+    uint256 internal constant MAX_DELIVERY_UNITS_PER_SHARE =
+        uint256(MAX_MULTIPLIER_COMPONENT) * MAX_MULTIPLIER_COMPONENT;
     uint8 internal constant REQUIRED_MAX_FILLS = 8;
     uint8 internal constant REQUIRED_MAX_ACTIVE_RECEIPTS = 32;
     uint8 internal constant REPORT_SCHEMA_VERSION = 1;
@@ -26,7 +30,8 @@ library Types {
         CLOSE_CONFIRMED,
         REOPEN_BENCHMARK,
         CORPORATE_ACTION,
-        HALT
+        HALT,
+        MARKET_PRICE
     }
 
     enum SessionPhase {
@@ -142,6 +147,21 @@ library Types {
         uint128 multiplierNumerator;
         uint128 multiplierDenominator;
         uint64 observedAt;
+        bytes32 primarySourceHash;
+        bytes32 secondarySourceHash;
+        bytes32 reportHash;
+    }
+
+    struct ReferencePriceFact {
+        bytes32 assetId;
+        bytes32 sessionId;
+        bytes32 configHash;
+        uint256 price;
+        uint128 multiplierNumerator;
+        uint128 multiplierDenominator;
+        uint64 observedAt;
+        uint64 validUntil;
+        bytes32 corporateActionHash;
         bytes32 primarySourceHash;
         bytes32 secondarySourceHash;
         bytes32 reportHash;

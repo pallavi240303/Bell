@@ -40,6 +40,14 @@ library Errors {
     error ZeroBenchmarkPrice();
     error InvalidMultiplier();
     error MissingSourceEvidence();
+    error DuplicateSourceEvidence();
+    error ReferenceUnavailable(bytes32 assetId);
+    error ReferenceSessionNotOpen(bytes32 sessionId);
+    error AssetHalted(bytes32 assetId);
+    error StaleReference(uint64 observedAt, uint64 currentTime);
+    error InvalidReferenceValidity();
+    error NonMonotonicReference(uint64 previousObservedAt, uint64 observedAt);
+    error InvalidReferenceAction();
     error UnsupportedCorporateAction(Types.CorporateAction action);
     error ZeroActionId();
     error ZeroDenominator();
