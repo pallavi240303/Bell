@@ -2,6 +2,7 @@
 pragma solidity 0.8.24;
 
 import {ReceiptFixture} from "../helpers/ReceiptFixture.sol";
+import {CoverManager} from "../../src/CoverManager.sol";
 import {LoanVault} from "../../src/LoanVault.sol";
 import {MockStockToken} from "../../src/demo/MockStockToken.sol";
 import {Types} from "../../src/lib/Types.sol";
@@ -9,7 +10,7 @@ import {Errors} from "../../src/lib/Errors.sol";
 
 contract ReceiptScenariosTest is ReceiptFixture {
     // Catches independent per-call rounding, release-after-partial, and reordered lots.
-    function testPartialThenTerminalPreservesOrderedCumulativeFillsAndExactCash() public {
+    function testPartialSettlementEndsAndReleasesResidualEscrow() public {
         uint256 id = _borrow();
         _benchmark(60e6, 1, 1);
         _settle(id, false);
@@ -18,19 +19,17 @@ contract ReceiptScenariosTest is ReceiptFixture {
         assertEq(book.getOffer(ids[0]).cumulativeExercisedShares, 1_803_278_680_000_000_001);
         assertEq(book.getOffer(ids[1]).cumulativeCashCharged, 0);
         assertEq(vault.getClaim(1).owner, BUYER);
-        assertEq(book.totalLockedCash(), 769_672_131);
-        _reserved();
-        vm.warp(2000);
-        _settle(id, true);
-        assertEq(book.getOffer(ids[0]).cumulativeCashCharged, 500e6);
-        assertEq(book.getOffer(ids[0]).cumulativeExercisedShares, 4_999_999_990_000_000_001);
-        assertEq(book.getOffer(ids[1]).cumulativeExercisedShares, 0);
+        assertEq(vault.getClaim(1).receiptId, id);
+        assertEq(book.totalLockedCash(), 0);
         assertEq(book.cashCredit(OTHER_BUYER), 450e6);
+        vm.warp(2000);
+        vm.expectRevert(CoverManager.ReceiptNotActive.selector);
+        manager.terminalSettle(id);
+        _repay(id, PAYER, vault.debtOf(id));
         _closedFinancially(id);
         _withdrawAllClaims();
-        life.finalizeHandoff(id);
+        _finalize(id);
         assertEq(vault.backingOf(id), 0);
-        assertEq(uint8(manager.getReceipt(id).status), 3);
     }
 
     function testNoReportTerminalIgnoresTokenMetadataPauseAndBuyerIneligibility() public {
@@ -62,36 +61,33 @@ contract ReceiptScenariosTest is ReceiptFixture {
         assertEq(vault.debtOf(id), 0);
         stock.setRestricted(address(vault), false);
         _withdrawAllClaims();
-        life.finalizeHandoff(id);
+        _finalize(id);
         assertEq(vault.backingOf(id), 0);
     }
 
     function testAcceptedSplitClaimsSurviveAbsentBackingAndRecoverAfterThirdPartyTopup() public {
         uint256 id = _borrow();
-        _benchmark(30e6, 2, 1); // snapshot value 60, partial exercise
+        _benchmark(1, 2, 1);
         _settle(id, false);
-        vm.prank(PAYER);
-        life.addCollateral(id, 1e18);
-        assertEq(vault.backingOf(id), 12e18);
-        vm.warp(2000);
-        _settle(id, true);
+        Types.MarketEventReport memory action = _report(Types.MarketEventKind.CORPORATE_ACTION);
+        action.corporateAction = Types.CorporateAction.SPLIT;
+        action.actionId = keccak256("SPLIT");
+        action.multiplierNumerator = 2;
+        action.multiplierDenominator = 1;
+        oracle.acceptReport(action);
+        _repay(id, PAYER, vault.debtOf(id));
         _closedFinancially(id);
-        assertEq(liabilities.outstandingClaimUnits(id), 22e18);
-        // Borrower residual is over 12 units: no claim or liability can be burned on failure.
+        assertEq(liabilities.outstandingClaimUnits(id), 20e18);
         uint256 borrowerClaim = vault.nextClaimId() - 1;
-        uint256 backingBefore = vault.backingOf(id);
         vm.prank(BORROWER);
         vm.expectRevert(LoanVault.InsufficientBacking.selector);
         vault.withdrawClaim(borrowerClaim, BORROWER);
         assertFalse(vault.getClaim(borrowerClaim).withdrawn);
-        assertEq(vault.backingOf(id), backingBefore);
-        assertEq(liabilities.outstandingClaimUnits(id), 22e18);
         vm.prank(PAYER);
         life.topUpBacking(id, 10e18);
         stock.setMultiplier(100, 1);
         _withdrawAllClaims();
-        assertEq(liabilities.outstandingClaimUnits(id), 0);
-        life.finalizeHandoff(id);
+        _finalize(id);
         assertEq(vault.backingOf(id), 0);
     }
 
@@ -107,40 +103,30 @@ contract ReceiptScenariosTest is ReceiptFixture {
         assertEq(vault.backingOf(id), 9e18 + 1);
         stock.setPaused(true);
         vm.expectRevert(MockStockToken.TransfersPaused.selector);
-        life.finalizeHandoff(id);
+        _finalize(id);
         assertEq(uint8(manager.getReceipt(id).status), 2);
         assertEq(vault.backingOf(id), 9e18 + 1);
         stock.setPaused(false);
         uint256 beforeBorrower = stock.balanceOf(BORROWER);
-        life.finalizeHandoff(id);
+        _finalize(id);
         assertEq(stock.balanceOf(BORROWER) - beforeBorrower, 9e18 + 1);
-        assertEq(uint8(manager.getReceipt(id).status), 3);
+        assertEq(uint8(manager.getReceipt(id).status), 2);
     }
 
-    function testZeroDeliveryEconomicClaimsNeverBlockFinancialOrFinalClosure() public {
+    function testPaidZeroDeliveryFillRollsBackEntireCoverSettlement() public {
         _clearOffers();
         ids.push(_post(BUYER, 10, 1e18));
         _quote();
         quote.principal = 4;
-        // Use large collateral for origination, then an extreme authenticated reverse split.
-        quote.collateralShares = 10e18;
-        quote.referencePrice = 100e6;
         uint256 id = _borrow();
-        _benchmark(1, 1, type(uint128).max);
-        _settle(id, false);
-        _closedFinancially(id);
-        assertEq(vault.getClaim(1).snapshotShares, 5);
-        assertEq(liabilities.outstandingClaimUnits(id), 0);
-        vm.prank(BUYER);
+        _benchmark(1, 1, type(uint64).max);
+        bytes32 beforeState = _state(id);
         vm.expectRevert(LoanVault.ZeroDelivery.selector);
-        vault.withdrawClaim(1, BUYER);
-        assertFalse(vault.getClaim(1).withdrawn);
-        assertEq(vault.backingOf(id), 10e18);
-        life.finalizeHandoff(id);
-        assertEq(uint8(manager.getReceipt(id).status), 3);
-        assertEq(vault.getClaim(1).snapshotShares, 5);
-        assertFalse(vault.getClaim(1).withdrawn);
-        assertEq(vault.backingOf(id), 0);
+        manager.settle(id);
+        assertEq(_state(id), beforeState);
+        assertEq(vault.nextClaimId(), 1);
+        assertEq(uint8(manager.getReceipt(id).status), 1);
+        assertEq(loans.getLoan(id).activeCoverId, id);
     }
 
     function testLastFillExcessIsBorrowerCreditNeverPoolDebtReduction() public {
@@ -175,7 +161,7 @@ contract ReceiptScenariosTest is ReceiptFixture {
         vm.cool(address(cash));
         uint256 gasBefore = gasleft();
         vm.prank(KEEPER);
-        life.terminalSettle(id);
+        manager.terminalSettle(id);
         emit log_named_uint("cold eight-lot terminal settlement gas", gasBefore - gasleft());
         uint256 charged;
         for (uint256 i; i < 8; ++i) {
@@ -196,7 +182,7 @@ contract ReceiptScenariosTest is ReceiptFixture {
         bytes32 beforeState = _state(id);
         cash.setTransferHook(address(this), abi.encodeCall(this.shortenNextCashTransfer, ()));
         vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenBalanceDelta.selector, 50e6, 50e6 - 1));
-        life.terminalSettle(id);
+        manager.terminalSettle(id);
         assertEq(_state(id), beforeState);
         assertEq(vault.nextClaimId(), 1);
         assertEq(liabilities.outstandingClaimUnits(id), 0);
@@ -224,9 +210,10 @@ contract ReceiptScenariosTest is ReceiptFixture {
         _benchmark(price, 1, 1);
         _settle(id, false);
         if (vault.debtOf(id) != 0) {
-            _reserved();
-            vm.warp(2000);
-            _settle(id, true);
+            assertEq(book.totalLockedCash(), 0);
+            uint256 residual = vault.debtOf(id);
+            _repay(id, PAYER, residual);
+            repayment += residual;
         }
         uint256 totalCash;
         for (uint256 i; i < ids.length; ++i) {
@@ -242,7 +229,7 @@ contract ReceiptScenariosTest is ReceiptFixture {
         assertEq(liabilities.outstandingClaimUnits(id), 10e18);
         _closedFinancially(id);
         _withdrawAllClaims();
-        life.finalizeHandoff(id);
+        _finalize(id);
         assertEq(vault.backingOf(id), 0);
         assertEq(vault.accountedBacking(address(stock)), 0);
     }

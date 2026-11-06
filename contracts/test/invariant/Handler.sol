@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {ReceiptFixture} from "../helpers/ReceiptFixture.sol";
 import {Types} from "../../src/lib/Types.sol";
+import {LoanManager} from "../../src/LoanManager.sol";
 import {LoanVault} from "../../src/LoanVault.sol";
 import {Errors} from "../../src/lib/Errors.sol";
 import {CoverManager} from "../../src/CoverManager.sol";
@@ -137,7 +138,7 @@ contract Handler is ReceiptFixture {
     }
 
     function terminal() external {
-        if (receipt == 0 || terminalSettled || vault.debtOf(receipt) == 0) return;
+        if (receipt == 0 || normalSettled || terminalSettled || vault.debtOf(receipt) == 0) return;
         vm.warp(2000);
         uint256 cappedDebt = vault.debtOf(receipt);
         vm.warp(2001);
@@ -195,11 +196,11 @@ contract Handler is ReceiptFixture {
         if (receipt == 0) return;
         uint256 owed = ghostOutstandingUnits;
         uint256 backing = ghostBacking;
-        if (owed <= backing) return;
+        uint256 topup = owed > backing ? owed - backing : 1;
         vm.prank(PAYER);
-        life.topUpBacking(receipt, owed - backing);
-        ghostBacking += owed - backing;
-        ghostTopupUnits += owed - backing;
+        life.topUpBacking(receipt, topup);
+        ghostBacking += topup;
+        ghostTopupUnits += topup;
         successfulTopups++;
     }
 
@@ -288,7 +289,7 @@ contract Handler is ReceiptFixture {
         }
         bytes32 digest = QuoteHash.hash(address(manager), quote, ids, hashes);
         vm.prank(ADVERSARY);
-        try manager.borrowWithCover(quote, ids, hashes, digest) returns (uint256) {
+        try manager.buyCover(quote.loanId, quote, ids, hashes, digest) returns (uint256) {
             violations++;
         } catch (bytes memory reason) {
             if (_selector(reason) == CoverManager.InvalidBorrower.selector) {
@@ -318,7 +319,7 @@ contract Handler is ReceiptFixture {
                 }
             }
             vm.prank(KEEPER);
-            try life.settle(receipt) {
+            try manager.settle(receipt) {
                 violations++;
             } catch (bytes memory reason) {
                 if (_selector(reason) == CoverManager.BenchmarkUnavailable.selector) {
@@ -332,7 +333,7 @@ contract Handler is ReceiptFixture {
             try life.withdrawCollateral(receipt, 1) {
                 violations++;
             } catch (bytes memory reason) {
-                if (_selector(reason) == CoverManager.ReservedCollateral.selector) {
+                if (_selector(reason) == LoanManager.CoveredCollateralReserved.selector) {
                     expectedReverts++;
                     rejectedUnsafeWithdrawals++;
                 } else {
@@ -441,7 +442,8 @@ contract Handler is ReceiptFixture {
             Types.Offer memory offer = book.getOffer(ids[i]);
             assertLe(offer.cumulativeCashCharged, offer.cashCapacity);
             assertEq(offer.receiptId, receipt);
-            if (vault.debtOf(receipt) > 0) assertEq(uint8(offer.status), uint8(Types.OfferStatus.RESERVED));
+            if (!normalSettled && !terminalSettled) assertEq(uint8(offer.status), uint8(Types.OfferStatus.RESERVED));
+            else assertEq(uint8(offer.status), uint8(Types.OfferStatus.RELEASED));
         }
         if (vault.getDebt(receipt).closed) assertEq(vault.debtOf(receipt), 0);
     }

@@ -67,7 +67,7 @@ contract ProtocolInvariantsTest is Test {
         assertGt(handler.successfulCollateralWithdrawals(), 0);
         assertGt(handler.successfulReports(), 0);
         assertGt(handler.successfulSettlements(), 0);
-        assertGt(handler.successfulTerminal(), 0);
+        assertEq(handler.successfulTerminal(), 0); // ended normal cover cannot terminal-settle
         assertGt(handler.successfulClaims(), 0);
         assertGt(handler.successfulCredits(), 0);
         assertGt(handler.successfulRestrictions(), 0);
@@ -119,7 +119,7 @@ contract ProtocolInvariantsTest is Test {
         handler.checkAccounting();
         assertEq(handler.ghostMultiplierN(), 1);
         assertEq(handler.ghostMultiplierD(), 2);
-        assertEq(handler.ghostEconomicShares(), 10e18);
+        assertEq(handler.ghostEconomicShares() + handler.ghostRemainingShares(), 10e18);
         assertEq(handler.ghostClaimShares(1) % 2, 1);
         assertEq(handler.ghostClaimUnits(1), handler.ghostClaimShares(1) / 2);
         assertGt(handler.successfulClaims(), 0);

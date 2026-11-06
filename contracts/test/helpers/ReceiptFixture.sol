@@ -7,6 +7,7 @@ import {SessionOracle} from "../../src/SessionOracle.sol";
 import {CommitmentBook} from "../../src/CommitmentBook.sol";
 import {ProtectedPool} from "../../src/ProtectedPool.sol";
 import {LoanVault} from "../../src/LoanVault.sol";
+import {LoanManager} from "../../src/LoanManager.sol";
 import {CoverManager} from "../../src/CoverManager.sol";
 import {QuoteHash} from "../../src/lib/QuoteHash.sol";
 import {Types} from "../../src/lib/Types.sol";
@@ -33,7 +34,7 @@ interface LifecycleVaultAPI {
 abstract contract ReceiptFixture is Test {
     bytes32 internal constant ASSET = keccak256("STOCK");
     bytes32 internal constant SESSION = keccak256("SESSION");
-    bytes32 internal constant POLICY = keccak256("POLICY");
+    bytes32 internal POLICY;
     address internal constant BORROWER = address(0xA11CE);
     address internal constant PAYER = address(0xAAA);
     address internal constant BUYER = address(0xB0B);
@@ -48,6 +49,7 @@ abstract contract ReceiptFixture is Test {
     ProtectedPool internal pool;
     LoanVault internal vault;
     CoverManager internal manager;
+    LoanManager internal loans;
     LifecycleAPI internal life;
     LifecycleVaultAPI internal liabilities;
     MockCashToken internal cash;
@@ -60,7 +62,7 @@ abstract contract ReceiptFixture is Test {
     uint256 internal nonce;
 
     function setUp() public virtual {
-        vm.warp(1000);
+        vm.warp(800);
         cash = new MockCashToken();
         stock = new MockStockToken(address(this));
         registry = new AssetRegistry(address(this));
@@ -69,17 +71,29 @@ abstract contract ReceiptFixture is Test {
         book = new CommitmentBook(address(cash), address(eligibility), address(this));
         pool = new ProtectedPool(address(cash), address(this));
         vault = new LoanVault(address(this));
-        manager = new CoverManager(address(registry), address(oracle), address(book), address(pool), address(vault));
-        life = LifecycleAPI(address(manager));
+        loans = new LoanManager(address(registry), address(oracle), address(pool), address(vault), address(this));
+        manager = new CoverManager(
+            address(registry),
+            address(oracle),
+            address(book),
+            address(pool),
+            address(vault),
+            address(loans),
+            CoverManager.Profile.REPLAY
+        );
+        loans.bindCoverManager(address(manager));
+        life = LifecycleAPI(address(loans));
         liabilities = LifecycleVaultAPI(address(vault));
         book.initialize(address(manager), address(pool));
-        pool.initialize(address(manager));
-        vault.initialize(address(manager));
+        pool.initialize(address(loans));
+        vault.initialize(address(loans));
         registry.scheduleAssetConfig(ASSET, _config(1), 1001);
         configHash = registry.configHash(ASSET, 1);
         oracle.bindReceiver(address(this));
         oracle.acceptReport(_report(Types.MarketEventKind.SESSION_SCHEDULED));
         vm.warp(1001);
+        _reference(100e6);
+        POLICY = manager.policyHash(ASSET, SESSION, configHash, 1, 1);
         cash.mint(LENDER, POOL_CASH);
         vm.startPrank(LENDER);
         cash.approve(address(pool), type(uint256).max);
@@ -103,7 +117,7 @@ abstract contract ReceiptFixture is Test {
         stock.mint(who, 1000e18);
         eligibility.setEligible(ASSET, who, POLICY, true);
         vm.startPrank(who);
-        cash.approve(address(manager), type(uint256).max);
+        cash.approve(address(loans), type(uint256).max);
         cash.approve(address(book), type(uint256).max);
         stock.approve(address(vault), type(uint256).max);
         vm.stopPrank();
@@ -134,6 +148,10 @@ abstract contract ReceiptFixture is Test {
         quote.snapshotMultiplierDenominator = 1;
         quote.minSettlementDeadline = 2000;
         quote.maxSettlementDeadline = 2000;
+        quote.borrowerNonce = manager.borrowerNonce(BORROWER);
+        quote.maxDebtAtAcceptance = type(uint128).max;
+        quote.maxDebtAtDeadline = type(uint128).max;
+        quote.referenceReportHash = oracle.latestReference(ASSET).reportHash;
         uint256 weighted;
         for (uint256 i; i < ids.length; ++i) {
             hashes.push(book.termsHashOf(ids[i]));
@@ -153,14 +171,51 @@ abstract contract ReceiptFixture is Test {
         delete ids;
     }
 
-    function _borrow() internal returns (uint256 id) {
+    function _openOrdinary() internal returns (uint256 id) {
+        LoanManager.BorrowRequest memory request = LoanManager.BorrowRequest(
+            ASSET,
+            quote.configVersion,
+            quote.configHash,
+            quote.principal,
+            quote.collateralShares,
+            quote.recipient,
+            oracle.latestReference(ASSET).reportHash,
+            quote.expiry
+        );
+        vm.prank(BORROWER);
+        id = loans.borrow(request);
+        quote.loanId = id;
+    }
+
+    function _buy() internal returns (uint256 id) {
         bytes32 digest = QuoteHash.hash(address(manager), quote, ids, hashes);
         vm.prank(BORROWER);
-        id = manager.borrowWithCover(quote, ids, hashes, digest);
+        id = manager.buyCover(quote.loanId, quote, ids, hashes, digest);
+    }
+
+    function _borrow() internal returns (uint256 id) {
+        _openOrdinary();
+        id = _buy();
         vm.warp(block.timestamp + 1);
     }
 
-    function _report(Types.MarketEventKind kind) internal view returns (Types.MarketEventReport memory r) {
+    function _reference(uint256 price) internal {
+        Types.MarketEventReport memory r = _report(Types.MarketEventKind.MARKET_PRICE);
+        r.scheduledOpen = oracle.sessionFact(SESSION).scheduledOpen;
+        r.scheduledClose = oracle.sessionFact(SESSION).scheduledClose;
+        r.benchmarkPrice = price;
+        r.multiplierNumerator = 1;
+        r.multiplierDenominator = 1;
+        Types.CorporateActionFact memory action = oracle.latestCorporateAction(ASSET);
+        if (action.reportHash != bytes32(0)) {
+            r.multiplierNumerator = action.multiplierNumerator;
+            r.multiplierDenominator = action.multiplierDenominator;
+        }
+        r.secondarySourceHash = keccak256("SECONDARY");
+        oracle.acceptReport(r);
+    }
+
+    function _report(Types.MarketEventKind kind) internal view virtual returns (Types.MarketEventReport memory r) {
         Types.AssetState memory s = oracle.assetState(ASSET);
         r.schemaVersion = 1;
         r.kind = kind;
@@ -173,9 +228,12 @@ abstract contract ReceiptFixture is Test {
         r.observedAt = uint64(block.timestamp);
         r.validUntil = uint64(block.timestamp + 1000);
         r.primarySourceHash = keccak256("PRIMARY");
-        if (kind != Types.MarketEventKind.HALT && kind != Types.MarketEventKind.CORPORATE_ACTION) {
+        if (
+            kind != Types.MarketEventKind.HALT && kind != Types.MarketEventKind.CORPORATE_ACTION
+                && kind != Types.MarketEventKind.MARKET_PRICE
+        ) {
             r.sessionId = SESSION;
-            r.scheduledOpen = 1200;
+            r.scheduledOpen = 900;
             r.scheduledClose = 1500;
         }
     }
@@ -209,8 +267,8 @@ abstract contract ReceiptFixture is Test {
         uint256 beforeBook = cash.balanceOf(address(book));
         vm.prank(KEEPER);
         uint256 gasBefore = gasleft();
-        if (terminal) life.terminalSettle(id);
-        else life.settle(id);
+        if (terminal) manager.terminalSettle(id);
+        else manager.settle(id);
         uint256 used = gasBefore - gasleft();
         emit log_named_uint(terminal ? "terminal settlement call gas" : "normal settlement call gas", used);
         uint256 reduction = beforeDebt - vault.debtOf(id);
@@ -236,6 +294,11 @@ abstract contract ReceiptFixture is Test {
         for (uint256 i; i < ids.length; ++i) {
             assertEq(uint8(book.getOffer(ids[i]).status), uint8(Types.OfferStatus.RELEASED));
         }
+    }
+
+    function _finalize(uint256 id) internal {
+        vm.prank(BORROWER);
+        life.finalizeHandoff(id);
     }
 
     function _withdrawAllClaims() internal {
@@ -271,7 +334,7 @@ abstract contract ReceiptFixture is Test {
         result = keccak256(
             abi.encode(
                 result,
-                cash.allowance(PAYER, address(manager)),
+                cash.allowance(PAYER, address(loans)),
                 cash.balanceOf(BORROWER),
                 book.cashCredit(BORROWER),
                 book.cashCredit(BUYER),

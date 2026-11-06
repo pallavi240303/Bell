@@ -117,11 +117,12 @@ contract BoundedOperationsTest is ReceiptFixture {
 
     function _eightBorrow() internal returns (uint256 id) {
         _eight();
+        _openOrdinary();
         bytes32 digest = QuoteHash.hash(address(manager), quote, ids, hashes);
         _cool();
         vm.prank(BORROWER);
         uint256 start = gasleft();
-        id = manager.borrowWithCover(quote, ids, hashes, digest);
+        id = manager.buyCover(quote.loanId, quote, ids, hashes, digest);
         uint256 used = start - gasleft();
         emit log_named_uint("cold eight-fill borrowing gas", used);
         assertLt(used, LIMIT);
@@ -150,7 +151,7 @@ contract BoundedOperationsTest is ReceiptFixture {
         _cool();
         vm.prank(KEEPER);
         uint256 start = gasleft();
-        life.settle(id);
+        manager.settle(id);
         uint256 used = start - gasleft();
         emit log_named_uint("cold eight-fill normal settlement gas", used);
         assertLt(used, LIMIT);
@@ -163,7 +164,7 @@ contract BoundedOperationsTest is ReceiptFixture {
         _cool();
         vm.prank(KEEPER);
         uint256 start = gasleft();
-        life.terminalSettle(id);
+        manager.terminalSettle(id);
         uint256 used = start - gasleft();
         emit log_named_uint("cold eight-fill terminal settlement gas", used);
         assertLt(used, LIMIT);
