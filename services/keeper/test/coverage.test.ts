@@ -5,7 +5,7 @@ test('review 2: exact locked-cash projection distinguishes status, receipts and 
   const project=(state as any).projectCoverage;assert.equal(typeof project,'function');
   const offer=(status:bigint,charged:bigint,receiptId=0n)=>({status,cashCapacity:100n,cumulativeCashCharged:charged,receiptId});
   const offers={free:offer(1n,0n),partial:offer(2n,30n,1n),other:offer(2n,20n,2n),cancelled:offer(4n,0n),released:offer(3n,40n)};
-  const receipts={'1':{receipt:{offerIds:['partial','released']}},'2':{receipt:{offerIds:['other']}}};
+  const receipts={'1':{receipt:{status:1n,offerIds:['partial','released']}},'2':{receipt:{status:1n,offerIds:['other']}}};
   const coverage=project(offers,receipts,250n,true);
   assert.deepEqual(Object.values(coverage).map((o:any)=>o.currentLockedCash),[100n,70n,80n,0n,0n]);
   assert.equal('currentLockedCash' in offers.free,false,'contract offer tuples must stay separate from display metadata');
@@ -15,4 +15,5 @@ test('review 2: exact locked-cash projection distinguishes status, receipts and 
   assert.throws(()=>project({free:offer(1n,0n)},{},99n,false),/global/);
   assert.throws(()=>project({bad:offer(2n,101n)},{},0n,false),/underflow/);
   assert.throws(()=>project({},receipts,0n,false),/missing/);
+  const ended={'1':{receipt:{status:2n,offerIds:['partial']}}};project(offers,ended,250n,true);assert.equal((ended['1'] as any).receiptRemainingCoverage,0n);
 });

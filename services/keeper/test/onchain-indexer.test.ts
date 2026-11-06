@@ -13,12 +13,15 @@ import {verifyDeployment} from '../config.ts';
 test('review 4: indexed evidence retains historical provenance and rejects stale canonical boundaries',async()=>{
   const {indexedEvents}=(await import('../state.ts')) as any;assert.equal(typeof indexedEvents,'function');
   const hash=(n:string)=>`0x${n.repeat(64)}`;
-  const blocks=[{header:{number:'1',hash:hash('1'),timestamp:'10'},logs:[{blockNumber:'1',blockHash:hash('1')}]},{header:{number:'2',hash:hash('2'),timestamp:'20'},logs:[{blockNumber:'2',blockHash:hash('2')}] }];
-  const index={store:{data:{blocks}},sync:async()=>{}};
+  const address='0x0000000000000000000000000000000000000001';
+  const blocks=[{header:{number:'1',hash:hash('1'),timestamp:'10'},logs:[{address,blockNumber:'1',blockHash:hash('1')}]},{header:{number:'2',hash:hash('2'),timestamp:'20'},logs:[{address,blockNumber:'2',blockHash:hash('2')}] }];
+  let syncs=0;
+  const index={store:{deployment:{addresses:{manager:address,cash:'0x0000000000000000000000000000000000000002'}},data:{blocks}},sync:async()=>{syncs++;}};
   const rpc={getBlock:async({blockNumber}:any)=>({number:blockNumber,hash:hash(blockNumber.toString()),timestamp:blockNumber*10n})};
-  const evidence=await indexedEvents(index,rpc,{number:1n,hash:hash('1')});assert.equal(evidence.block.number,1n);assert.equal(evidence.events.length,1);assert.equal(evidence.events[0].blockTimestamp,10n);
-  await assert.rejects(()=>indexedEvents(index,rpc,{number:1n,hash:hash('3')}),/boundary/);
-  rpc.getBlock=async()=>({number:1n,hash:hash('3'),timestamp:10n});await assert.rejects(()=>indexedEvents(index,rpc,{number:1n,hash:hash('1')}),/replaced/);
+  const evidence=await indexedEvents(index,rpc,{number:1n,hash:hash('1')});assert.equal(evidence.block.number,1n);assert.equal(evidence.events.length,1);assert.equal(evidence.events[0].blockTimestamp,10n);assert.equal(syncs,0,'committed boundary returns without catching up to a newer head');
+  await assert.rejects(()=>indexedEvents(index,rpc,{number:1n,hash:hash('3')}),/boundary/);assert.equal(syncs,1,'missing boundary still syncs');
+  await indexedEvents(index,rpc);assert.equal(syncs,2,'unprovided boundary still syncs');
+  rpc.getBlock=async()=>({number:1n,hash:hash('3'),timestamp:10n});await assert.rejects(()=>indexedEvents(index,rpc,{number:1n,hash:hash('1')}),/replaced/);assert.equal(syncs,2,'fast path never skips canonical replacement rejection');
 });
 
 test('API state never combines new config discovery or reorg identifiers with a different block',async()=>{
@@ -80,4 +83,20 @@ test('real pool deposit and empty block refresh, Anvil reorg rollback, code iden
     await node.time(1006n);await index.sync();assert.equal(store.data.blocks.at(-1)!.header.timestamp,'1006');
     store=new Store(path,d);index=build();await index.sync();assert.equal(store.data.blocks.at(-1)!.projection.state.pool.totalAssets,'0');
   }finally{await node.stop();}
+});
+
+test('shared cash-only activity does not discover unrelated users, while protocol cash counterparties and share recipients remain discoverable',async()=>{
+ const node=await localNode();try{
+ const {deployment:d}=await deployLocal(node);d.deploymentBlock=(await node.client.getBlockNumber()).toString();const owner=node.actors[0]!,unrelated=node.actors[7]!,recipient=node.actors[8]!,lender=node.actors[1]!,shareRecipient=node.actors[2]!,approved=node.actors[3]!;
+ const store=new Store(join(mkdtempSync(join(tmpdir(),'bell-shared-cash-')),'store.json'),d),index=new Indexer(store,node.client,async()=>({discoveryOnly:true}));
+ const send=(who:any,c:string,f:string,args:any[])=>node.send(who,d.addresses[c]!,encodeFunctionData({abi:artifact(c==='cash'?'MockCashToken':'ProtectedPool').abi,functionName:f,args}));
+ const unrelatedReceipts=[await send(owner,'cash','mint',[unrelated,100n]),await send(unrelated,'cash','transfer',[recipient,1n]),await send(unrelated,'cash','approve',[recipient,1n])];
+ await send(owner,'cash','mint',[lender,1000000n]);await send(lender,'cash','approve',[d.addresses.pool,1000000n]);await send(lender,'pool','deposit',[1000000n]);await send(lender,'pool','transfer',[shareRecipient,1n]);await send(approved,'cash','approve',[d.addresses.book,1n]);
+ const {indexedState}=await import('../state.ts');const observed=await indexedState(index,node.client);
+ assert.equal(observed.state.balances[unrelated],undefined);assert.equal(observed.state.balances[recipient],undefined);assert.equal(observed.state.balances[lender].poolShares,999999999999999999n);assert.equal(observed.state.balances[shareRecipient].poolShares,1n);assert.ok(observed.state.balances[approved]);
+ assert.ok(store.data.blocks.flatMap(b=>b.logs).some(l=>l.decoded?.args?.from===unrelated),'unrelated raw cash logs remain available as provenance');
+ const {indexedEvents}=await import('../state.ts');const exposed=await indexedEvents(index,node.client,{number:observed.block.number,hash:observed.block.hash});
+ const rawLogs=store.data.blocks.flatMap(b=>b.logs);for(const receipt of unrelatedReceipts){assert.ok(rawLogs.some(l=>l.transactionHash===receipt.transactionHash),'raw unrelated cash transaction remains stored');assert.ok(!exposed.events.some(l=>l.transactionHash===receipt.transactionHash),'unrelated cash transaction is excluded from BELL API evidence');}
+ assert.equal(exposed.block.hash,observed.block.hash);assert.ok(exposed.events.some(l=>l.address===d.addresses.cash&&l.decoded?.eventName==='Approval'&&l.decoded.args.spender===d.addresses.pool));assert.ok(exposed.events.some(l=>l.address===d.addresses.cash&&l.decoded?.eventName==='Transfer'&&l.decoded.args.to===d.addresses.pool));assert.ok(exposed.events.some(l=>l.address===d.addresses.cash&&l.decoded?.eventName==='Approval'&&l.decoded.args.spender===d.addresses.book));assert.ok(exposed.events.some(l=>l.address===d.addresses.pool&&l.decoded?.eventName==='Transfer'&&l.decoded.args.to===shareRecipient));
+ }finally{await node.stop();}
 });
