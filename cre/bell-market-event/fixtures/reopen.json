@@ -1,0 +1,29 @@
+{
+  "kind": 3,
+  "assetId": "0x0bd4060688a1800ae986e4840aebc924bb40b5bf44de4583df2257220b54b77c",
+  "sessionId": "0x00628df1f66b79e2bfeba52434c1db4a90742f94f88431359683f4477a56c1b6",
+  "configHash": "0x02e50439afdd5511d6d4eb2ea407d703336e53ec76c290bc014e60766ca99510",
+  "calendar": {
+    "providerId": "calendar", "url": "https://calendar.example/evidence",
+    "responseHash": "0xf12295c6cff7c66c50482f7bee8dd63da0f387f76819ffea278d69c8f37485d1",
+    "observedAt": "1000", "status": "OPEN", "scheduledOpen": "800",
+    "scheduledClose": "900", "scheduledReopen": "1000", "validUntil": "1100"
+  },
+  "primary": {
+    "providerId": "primary", "url": "https://primary.example/evidence",
+    "responseHash": "0x9b762895dabfd4d12804fd33ec60e506ad3c3202f1db1aa997cfe6906a944b9a",
+    "observedAt": "1000", "price": "125000000", "corroborated": true
+  },
+  "secondary": {
+    "providerId": "secondary", "url": "https://secondary.example/evidence",
+    "responseHash": "0xfaf5b5ecd161aa298c9f1af9bb06ac73f109c13cb8d0c64017515a3de2b08bd6",
+    "observedAt": "1000", "price": "125000000", "corroborated": true
+  },
+  "corporate": {
+    "providerId": "corporate", "url": "https://corporate.example/evidence",
+    "responseHash": "0x2047c200a5e55f47acc90de83e34c20c03db50a60fe618dfeb3798965d79f9e7",
+    "observedAt": "1000", "action": 0,
+    "actionId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "multiplierNumerator": "1", "multiplierDenominator": "1"
+  }
+}

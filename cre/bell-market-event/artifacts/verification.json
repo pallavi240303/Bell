@@ -1,0 +1,37 @@
+{
+  "evidenceKind": "local deterministic tests and official compiler; not a successful CRE CLI simulation",
+  "sdk": "1.23.0",
+  "bun": "1.4.4",
+  "creCli": "1.39.0",
+  "wasmBuild": "passed using official cre-compile and Javy 8.1.0",
+  "sdkCapabilityTest": {
+    "command": "npm run test:sdk",
+    "passed": 1,
+    "httpConsensus": true,
+    "evmRead": true,
+    "reportAndEvmWrite": true,
+    "liveReplayPayloadEqual": true,
+    "receiversDistinct": true,
+    "payloadBytes": 672,
+    "network": "SDK mocks; no transactions broadcast"
+  },
+  "solidityIntegration": {
+    "command": "npm run test:integration",
+    "passed": 1,
+    "beforeValidReport": "BenchmarkUnavailable()",
+    "afterValidReport": "settlement succeeds and debt decreases",
+    "duplicateReport": "InvalidNonce(4,3)",
+    "payloadBytes": 672,
+    "reportHash": "0x105583bedb4d734c4f8aa6f98cf60deef1b0d548df00427e10fee4a50b38f2ad",
+    "hashProof": "payload equals Solidity abi.encode(expected); keccak256 equal; oracle benchmark stores same hash",
+    "network": "Foundry local EVM; SimulationMarketEventReceiver configured forwarder; no authority bypass"
+  },
+  "cliSimulation": {
+    "status": "blocked before execution",
+    "command": "cre workflow simulate ./cre/bell-market-event --non-interactive --trigger-index 0",
+    "exitCode": 1,
+    "message": "Authentication required: not logged in and no CRE_API_KEY set",
+    "gate": "Pallavi's CRE login, real deployment/source configuration, then retry without --broadcast"
+  },
+  "authenticatedProviders": "Not implemented: automatic approval review rejected secret-to-provider transport. Public endpoints only."
+}

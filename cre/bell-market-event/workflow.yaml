@@ -1,0 +1,14 @@
+replay-settings:
+  user-workflow:
+    workflow-name: bell-market-event-replay
+  workflow-artifacts:
+    workflow-path: ./src/main.ts
+    config-path: ./config.replay.json
+    secrets-path: ""
+live-settings:
+  user-workflow:
+    workflow-name: bell-market-event-live
+  workflow-artifacts:
+    workflow-path: ./src/main.ts
+    config-path: ./config.live.json
+    secrets-path: ""

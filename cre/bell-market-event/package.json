@@ -1,0 +1,26 @@
+{
+  "name": "@bell/market-event-workflow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npm run test:unit && npm run test:sdk",
+    "test:unit": "node --import tsx --test tests/*.test.ts",
+    "test:sdk": "bun test tests/sdk",
+    "typecheck": "tsc --noEmit",
+    "build": "bun node_modules/@chainlink/cre-sdk/bin/cre-compile.ts src/main.ts dist/workflow.wasm",
+    "test:integration": "node --import tsx scripts/integration.ts",
+    "check:toolchain": "node scripts/toolchain.mjs"
+  },
+  "dependencies": {
+    "@chainlink/cre-sdk": "1.23.0",
+    "viem": "2.38.5",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  },
+  "engines": { "bun": ">=1.2.21", "node": ">=22" }
+}

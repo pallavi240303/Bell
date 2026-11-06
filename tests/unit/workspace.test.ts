@@ -6,6 +6,15 @@ import test from 'node:test';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 
+test('CRE SDK is isolated from the root TypeScript project with explicit verification scripts', () => {
+  const config = JSON.parse(readFileSync(`${root}tsconfig.json`, 'utf8'));
+  const manifest = JSON.parse(readFileSync(`${root}package.json`, 'utf8'));
+  assert.ok(config.exclude?.includes('cre/bell-market-event'));
+  assert.equal(manifest.scripts['test:cre'], 'npm --prefix cre/bell-market-event test');
+  assert.equal(manifest.scripts['typecheck:cre'], 'npm --prefix cre/bell-market-event run typecheck');
+  assert.equal(manifest.scripts['build:cre'], 'npm --prefix cre/bell-market-event run build');
+});
+
 function run(command: string, args: string[], input?: string) {
   return spawnSync(command, args, { cwd: root, encoding: 'utf8', input });
 }

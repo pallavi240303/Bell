@@ -1,0 +1,31 @@
+{
+  "mode": "live",
+  "chainName": "arc-testnet",
+  "chainSelector": "3034092155422581607",
+  "chainId": "5042002",
+  "oracle": "0x0000000000000000000000000000000000000000",
+  "registry": "0x0000000000000000000000000000000000000000",
+  "configVersion": "1",
+  "assetId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "sessionId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "referenceSessionId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "liveReceiver": "0x0000000000000000000000000000000000000000",
+  "simulationReceiver": "0x0000000000000000000000000000000000000000",
+  "liveForwarder": "0x0000000000000000000000000000000000000000",
+  "simulationForwarder": "0x0000000000000000000000000000000000000000",
+  "workflowId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "workflowOwner": "0x0000000000000000000000000000000000000000",
+  "cron": "*/30 * * * * *",
+  "maxAgeSeconds": "1800",
+  "maxValiditySeconds": "1800",
+  "agreementBps": "100",
+  "extremeMoveBps": "2000",
+  "maxReadAttempts": 3,
+  "gasLimit": "1000000",
+  "providers": {
+    "calendar": { "id": "calendar", "url": "https://calendar.example/evidence" },
+    "primary": { "id": "primary", "url": "https://primary.example/evidence" },
+    "secondary": { "id": "secondary", "url": "https://secondary.example/evidence" },
+    "corporate": { "id": "corporate", "url": "https://corporate.example/evidence" }
+  }
+}
