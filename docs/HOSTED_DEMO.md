@@ -5,7 +5,7 @@ Use the corrected manifest in `deployments/arc-optional-cover.json`. Contracts, 
 ## Hosting
 
 1. Connect Vercel in the existing BELL Arc Studio project. Authorize access in your own account.
-2. Publish the reviewed source using the root `Dockerfile.vercel` and Container preset. Set the public project variable `PORT=3000`; allow a request duration of at least 240 seconds.
+2. Publish the reviewed source using root directory `./`, the root `Dockerfile.vercel` and Container preset. Root `vercel.json` explicitly selects `container` and resets npm/static build overrides. Clear dashboard Build Command, Install Command and Output Directory overrides. Set the public project variable `PORT=3000`; allow a request duration of at least 240 seconds.
 3. Do not use a static Vite-only deployment: the same server must provide `/api/*` and `/rpc`.
 4. Do not upload `.env`, API keys, deployer or actor private keys, login tokens, signed journals or cached runtime data. The hosted read-and-prepare service uses the public Arc RPC and needs no signing key. CRE/operator credentials stay local.
 5. Check `/healthz`, `/api/health`, `/api/manifest`, `/api/state` and the `/api/events` response pinned to that state block. Confirm chain `5042002` and the corrected manager addresses.
@@ -32,3 +32,9 @@ Open **WALLET & EXACT INPUTS** on the existing borrower, buyer or lender page. S
 6. Each actor approves their own transaction in MetaMask or Rabby. Record its public hash, wait for the canonical receipt, refresh and compare contract state/events. Withdraw claims and credits only from their owning actor.
 
 The frontend and backend never sign for any actor. CRE simulation reports are labelled synthetic and do not establish live DON deployment. Keep the real connected-wallet replay evidence separate from local test-wallet results.
+
+## Wrong build preset: forge not found
+
+If Vercel runs the repository's `npm run build` as its platform build and then reports `forge: command not found`, it is using the standard npm build path. The intended container obtains Foundry from its first stage and compiles contracts inside Docker. Do not replace this with a frontend-only build; the same deployment must serve the keeper API and RPC proxy.
+
+Deploy a commit containing root `vercel.json` and `Dockerfile.vercel`. Confirm the selected repository/branch is `pallavi240303/Bell`, `main`, with Root Directory `./` and Framework `Container`. Clear custom dashboard Build/Install/Output overrides and deploy the updated source. If publishing uploaded files through Studio, sync both root files into that uploaded source first. Verify the deployment log uses Docker build stages before testing the public frontend and API; configuration validation alone is not deployment proof.
