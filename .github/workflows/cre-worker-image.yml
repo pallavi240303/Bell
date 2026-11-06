@@ -24,6 +24,11 @@ on:
       - package-lock.json
       - .github/workflows/cre-worker-image.yml
   workflow_dispatch:
+    inputs:
+      verify_native:
+        description: Run the optional authenticated native CRE integration test
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -55,8 +60,9 @@ jobs:
           cache: false
       - name: Build workflow, run worker tests, build linux image
         run: docker build --platform linux/amd64 --file Dockerfile.worker --target runtime --tag bell-cre-worker:test .
-      - name: Exercise image CRE workflow against owned Anvil and verify canonical acceptance
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository_owner == 'pallavi240303'
+      - name: Optional authenticated native CRE acceptance
+        id: native
+        if: inputs.verify_native == true && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository_owner == 'pallavi240303'
         env:
           CRE_API_KEY: ${{ secrets.CRE_API_KEY }}
           BELL_WORKER_NATIVE_TEST: '1'
@@ -98,6 +104,14 @@ jobs:
           test "$(docker inspect bell-cre-worker-smoke --format '{{.State.ExitCode}}')" = 0
           docker rm bell-cre-worker-smoke > /dev/null
           docker run --rm --read-only --mount type=volume,source=bell-cre-worker-smoke,target=/data --mount type=bind,source="$RUNNER_TEMP/worker-jobs",target=/jobs,readonly bell-cre-worker:test --once
+      - name: Record release validation scope
+        env:
+          NATIVE_OUTCOME: ${{ steps.native.outcome }}
+        run: |
+          printf 'Image validation: compiled workflow WASM, worker tests, image boundary, nonroot health, graceful stop and restart.\n' >> "$GITHUB_STEP_SUMMARY"
+          if [ "$NATIVE_OUTCOME" != success ]; then
+            printf 'Authenticated native CRE integration was not run in this CI release. See docs/CRE_WORKER.md for local CLI simulation evidence.\n' >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Publish tested image
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository_owner == 'pallavi240303'
         env:

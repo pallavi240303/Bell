@@ -116,6 +116,31 @@ The build compiles the existing workflow to `/app/workflow.wasm` and runs worker
 
 Official tool provenance: [Node image](https://hub.docker.com/_/node), [Bun release](https://github.com/oven-sh/bun/releases/tag/bun-v1.3.14), [CRE release](https://github.com/smartcontractkit/cre-cli/releases/tag/v1.39.0), [CRE manual installation and glibc selection](https://docs.chain.link/cre/getting-started/cli-installation/macos-linux), [Javy release](https://github.com/bytecodealliance/javy/releases/tag/v8.1.0).
 
-The GitHub Actions workflow builds and tests before publishing the same image as `latest` and the full commit SHA. Its native integration fixture submits only to an owned local Anvil node using an inert fixture key, then checks canonical receiver, oracle and forwarder evidence. The fixture installs the actual public Arc forwarder's 3,692-byte runtime code, pinned by Keccak-256 `0x49ea1cbbe8b5373ef58e65cfa39a1c0f9832088a2d17b4e6698c242b9e54680f`, at its local forwarder address. This fixture is stored in `services/cre-worker/test/arc-forwarder.json`; it is included only in the test build stage, while production verification pins the same code identity.
+The default GitHub Actions release compiles the workflow, runs worker tests and checks the container's nonroot startup, writable volume, health, graceful stop and restart before publishing the same image as `latest` and the full commit SHA. It does not require a CRE API key. Its summary explicitly states that authenticated native integration was not run in that CI release. Pull requests run these checks without publishing.
 
-CI also checks the container's nonroot startup, writable volume, health, graceful stop and restart. Pull requests build, run unit tests and check container lifecycle without credentials or publishing; the authenticated native acceptance gate runs only for trusted `main` releases. Add a repository Actions secret named `CRE_API_KEY` for this gate. It is injected only at test runtime, passed by environment-variable name into the test container, and never used by the Docker build or image layers. Publication uses only the job's ephemeral `GITHUB_TOKEN` with `contents:read` and `packages:write`; CI needs the CRE API key for native CLI authentication, but never a public-chain operator key or provider API key. The Anvil transmitter key is an inert test fixture. The publication step records the pushed registry digest and pulls it back for verification.
+Authenticated native integration remains available through the workflow's manual `verify_native` input on trusted `main`. This optional check needs a valid repository secret named `CRE_API_KEY`; a selected check must pass before that run can publish. The key is injected only at test runtime and never enters Docker build arguments or image layers. The native fixture uses an inert Anvil transmitter key, never a public-chain operator key or provider API key.
+
+Publication uses only the job's ephemeral `GITHUB_TOKEN` with `contents:read` and `packages:write`. The publication step records the pushed registry digest and pulls it back for verification. Publishing an image does not authenticate a running worker: unattended jobs still need valid CRE authentication. The hackathon's supplied track requirements accept successful CLI simulation; deploying to the CRE network is separate.
+
+## Local native simulation evidence
+
+A fresh workflow build and actual CRE CLI simulation passed using browser authentication on an owned Anvil chain. The test verified receiver, oracle and forwarder acceptance, canonical block identity, and restart without resubmission. These are local chain transactions, not Arc Testnet transactions or a live DON deployment.
+
+```sh
+npm run build:cre
+env -u CRE_API_KEY BELL_WORKER_NATIVE_TEST=1 node --import tsx --test services/cre-worker/test/native.test.ts
+```
+
+The verified run returned:
+
+```json
+{
+  "chainId": 31337,
+  "reportHash": "0x24bb1f0726996c7fdeb5276c87846316f1c7fb8fdf0702c4648e13ce2aba6db3",
+  "transactionHash": "0x169a3c4cb38478c0520d1a0b3010626200e1dd1704a1dcc8997655df166d0b92",
+  "blockNumber": "162",
+  "blockHash": "0xf09752b58ce84414d68d54cdfcea843001e580be3f110d26b89ea27338ef3245"
+}
+```
+
+Each rerun creates fresh fixtures and report times, so its hashes differ. The test installs the actual public Arc forwarder's 3,692-byte runtime code, pinned by Keccak-256 `0x49ea1cbbe8b5373ef58e65cfa39a1c0f9832088a2d17b4e6698c242b9e54680f`, at a local address. The fixture is stored in `services/cre-worker/test/arc-forwarder.json`; it is included only in the test build stage. Production verification pins the same code identity.
