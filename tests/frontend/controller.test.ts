@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {sample} from './fixtures.ts';
 import {Controller} from '../../src/state/controller.ts';
 const hash=`0x${'ab'.repeat(32)}` as const;
 test('review 4: refresh binds event boundary, keeps historical time, and clears evidence on failure',async()=>{
@@ -20,31 +21,22 @@ test('review 5: claim units remain pending while recorded or paused and become d
   c.frame.state.tokens.stock.paused=false;assert.equal(c.renderVals().claims[0].unitsLabel,'PENDING UNITS');
   c.frame.state.claims['1'].withdrawn=true;claim=c.renderVals().claims[0];assert.equal(claim.unitsLabel,'DELIVERED UNITS');assert.equal(claim.canWithdraw,false);
 });
-test('review 3: latest active receipt is visible, selection persists, and a confirmed new borrow selects its receipt',async()=>{
-  const c=new Controller(),account=`0x${'ab'.repeat(20)}`;
-  const position=(status:bigint)=>({receipt:{status,consent:{borrower:account}},benchmark:{finalized:false}});
-  c.wallet={account,verified:true,send:async(_i:any,_u:any,refresh:any)=>{await refresh(2n);return {transactionHash:hash};}} as any;
-  c.manifest={chainId:'31337'} as any;c.transport.prepare=async()=>({} as any);
-  c.frame={block:{number:1n,hash,timestamp:1n},state:{receipts:{'1':position(3n),'2':position(1n)},pool:{},book:{}}};
-  assert.equal(c.renderVals().receiptId,'2');
-  c.renderVals().onReceipt({target:{value:'1'}});assert.equal(c.renderVals().receiptId,'1');
-  c.refresh=async()=>{c.frame!.state.receipts['3']={...position(1n),receipt:{...position(1n).receipt,quoteHash:hash}};};
-  await c.send({contract:'manager',method:'borrowWithCover',args:[{},[],[],hash]});assert.equal(c.renderVals().receiptId,'3');
-  assert.deepEqual(c.renderVals().receiptOptions.map((x:any)=>x.id),['1','2','3']);
+test('review 3: durable loan selection persists independently of cover receipt IDs',()=>{
+ const x=sample(),c=new Controller();c.wallet={account:x.account,verified:true} as any;c.manifest={chainId:'31337',addresses:{manager:x.manager}} as any;c.frame=x.frame;
+ c.frame!.state.loans['9']={...x.p,loan:{...x.p.loan,status:1n}};
+ assert.equal(c.renderVals().loanId,'9');c.renderVals().onReceipt({target:{value:'7'}});assert.equal(c.renderVals().loanId,'7');assert.deepEqual(c.renderVals().receiptOptions.map((o:any)=>o.id),['7','9']);
 });
-test('review 2: offer and receipt displays use current server coverage, never immutable capacity or global cash',()=>{
-  const c=new Controller(),account=`0x${'ab'.repeat(20)}`;c.wallet={account} as any;
-  c.frame={block:{number:1n,hash,timestamp:1n},state:{offers:{lot:{buyer:account,status:2n,receiptId:1n,terms:{expiry:2n},cashCapacity:100000000n,currentLockedCash:70000000n}},receipts:{'1':{receipt:{status:1n,consent:{borrower:account}},benchmark:{finalized:false},receiptRemainingCoverage:70000000n}},book:{totalLockedCash:999000000n}}};
-  c.frame.state.offerCoverage={lot:{currentLockedCash:70000000n}};c.frame.state.pool={};const v=c.renderVals();assert.equal(v.offers[0].escFmt,'70');assert.equal(v.offers[0].capacityFmt,'100');assert.equal(v.bell.lockFmt,'70');
+test('review 2: offer and loan displays use current coverage, never immutable capacity or global cash',()=>{
+ const x=sample(),c=new Controller();c.wallet={account:x.account,verified:true} as any;c.frame=x.frame;
+ x.p.currentCoverage=70000000n;x.frame.state.offerCoverage[x.ids[0]!]={currentLockedCash:70000000n};const v=c.renderVals();assert.equal(v.offers[0].escFmt,'70');assert.equal(v.offers[0].capacityFmt,'500');assert.equal(v.bell.lockFmt,'70');
 });
 test('controller renders absent finances as unavailable and labels separate sources of authority',()=>{
   const v=new Controller().renderVals();assert.equal(v.bell.debtFmt,'—');assert.equal(v.lend.balFmt,'—');assert.equal(v.outcome.show,false);assert.equal(v.labels.network,'UNVERIFIED');assert.equal(v.labels.clock,'BLOCK TIME');assert.equal(v.labels.authority,'CONTRACT SETTLEMENT');assert.equal(v.labels.signing,'CONNECTED WALLET');
 });
-test('receipt status is independent of debt and keeps residual collateral after partial settlement',()=>{
-  const c=new Controller();const account=`0x${'ab'.repeat(20)}`;c.wallet={account} as any;
-  c.frame={block:{number:1n,hash,timestamp:1n},state:{receipts:{'1':{receipt:{status:2n,consent:{borrower:account},debtCeiling:500n},remainingShares:2000000000000000000n,debt:0n,benchmark:{finalized:false}}},book:{totalLockedCash:10n},pool:{totalAssets:0n},balances:{}}};
-  let v=c.renderVals();assert.equal(v.bell.badge,'HANDOFF_PENDING');assert.equal(v.bell.debtFmt,'0');assert.equal(v.bell.shFmt,'2');assert.equal(v.outcome.show,false);
-  c.frame.state.receipts['1'].receipt.status=1n;c.frame.state.receipts['1'].debt=123n;v=c.renderVals();assert.equal(v.bell.debtFmt,'0.000123');assert.equal(v.bell.shFmt,'2');
+test('ended cover leaves residual loan finances and does not imply claim delivery',()=>{
+ const x=sample(),c=new Controller();c.wallet={account:x.account,verified:true} as any;c.frame=x.frame;
+ x.frame.state.receipts['12']={receipt:{loanId:7n,status:2n,consent:{borrower:x.account}},benchmark:{finalized:false},receiptRemainingCoverage:0n};
+ const v=c.renderVals();assert.equal(v.bell.badge,'ACTIVE');assert.equal(v.coverStatus,'COVER ENDED');assert.equal(v.bell.debtFmt,'399.1');assert.equal(v.bell.shFmt,'10');assert.equal(v.outcome.show,false);
 });
 test('failed or superseded refresh cannot leave a confirmed stale financial frame',async()=>{
   const c=new Controller();c.frame={block:{number:1n,hash,timestamp:1n},state:{}};c.transport.state=async()=>{throw Error('reorg');};

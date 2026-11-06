@@ -18,12 +18,12 @@ test('review 1: post and edit validate the same complete visible terms before an
     c.termsText=JSON.stringify(bad);calls.length=0;await assert.rejects(()=>c.edit('lot'));assert.equal(calls.length,0);
   }
 });
-test('borrow bundle preserves caller selected order, exact terms hashes, and one atomic calldata intent',async()=>{
+test('cover bundle preserves explicit loan, caller selected order and exact terms hashes',async()=>{
   const m=await import('../../src/adapter/actions.ts').catch(()=>null);assert.ok(m,'exact actor intents required');
-  assert.throws(()=>m.borrowIntent({},[],[],hash('a')),/one to eight/);
-  assert.throws(()=>m.borrowIntent({},[hash('1'),hash('2')],[hash('3')],hash('a')),/hash/);
-  const quote={borrower:'caller'};const intent=m.borrowIntent(quote,[hash('2'),hash('1')],[hash('3'),hash('4')],hash('a'));
-  assert.deepEqual(intent,{contract:'manager',method:'borrowWithCover',args:[quote,[hash('2'),hash('1')],[hash('3'),hash('4')],hash('a')]});
+  assert.throws(()=>m.coverIntent('7',{},[],[],hash('a')),/one to eight/);
+  assert.throws(()=>m.coverIntent('7',{},[hash('1'),hash('2')],[hash('3')],hash('a')),/hash/);
+  const quote={borrower:'caller'};const intent=m.coverIntent('7',quote,[hash('2'),hash('1')],[hash('3'),hash('4')],hash('a'));
+  assert.deepEqual(intent,{contract:'manager',method:'buyCover',args:['7',quote,[hash('2'),hash('1')],[hash('3'),hash('4')],hash('a')]});
 });
 test('buyer edit requires FREE status, cancellation receipt, and fresh nonce before repost',async()=>{
   const m=await import('../../src/adapter/actions.ts').catch(()=>null);assert.ok(m,'edit orchestration required');const calls:any[]=[];
@@ -33,13 +33,13 @@ test('buyer edit requires FREE status, cancellation receipt, and fresh nonce bef
   await m.editOffer({status:1n,terms:{nonce:1n}},hash('1'),{nonce:'2'},async(i:any)=>{calls.push(i);});assert.deepEqual(calls.map(i=>i.method),['cancelOffer','postOffer']);
 });
 test('receipt projection separates financial closure from delivery without inventing settlement',async()=>{
-  const {receiptLabel}=await import('../../src/state/truth.ts');assert.equal(receiptLabel(1n),'ACTIVE');assert.equal(receiptLabel(2n),'HANDOFF_PENDING');assert.equal(receiptLabel(3n),'CLOSED');
+  const {receiptLabel}=await import('../../src/state/truth.ts');assert.equal(receiptLabel(1n),'ACTIVE');assert.equal(receiptLabel(2n),'ENDED');assert.equal(receiptLabel(3n),'UNKNOWN');
 });
 test('browser quote hashing uses the generated contract tuple and matches the exact consent domain',async()=>{
   const m=await import('../../src/adapter/actions.ts') as any;assert.equal(typeof m.hashBundle,'function','generated tuple hashing required');
   const input=JSON.parse(readFileSync('services/keeper/fixtures/replay.json','utf8'));
-  const q={...input.consent,borrower:input.actors.borrower,recipient:input.actors.borrower,assetId:hash('1'),sessionId:hash('2'),configHash:hash('3'),policyHash:hash('4'),scheduledReportHash:hash('5'),corporateActionHash:hash('0'),weightedStrike:'95000000'};
+  const q={...input.consent,borrower:input.actors.borrower,recipient:input.actors.borrower,assetId:hash('1'),sessionId:hash('2'),configHash:hash('3'),policyHash:hash('4'),scheduledReportHash:hash('5'),corporateActionHash:hash('0'),weightedStrike:'95000000',loanId:'7',referenceReportHash:hash('8')};
   const ids=[hash('6')],terms=[hash('7')],manager=input.actors.owner;
-  const parsed=argsFor('CoverManager','borrowWithCover',[q,ids,terms,hash('0')])[0];
+  const parsed=argsFor('CoverManager','buyCover',['7',q,ids,terms,hash('0')])[1];
   assert.equal(m.hashBundle('31337',manager,q,ids,terms),referenceHash(31337n,manager,parsed,ids as any,terms as any));
 });

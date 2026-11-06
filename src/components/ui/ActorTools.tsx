@@ -9,10 +9,10 @@ const input="w-full [font-family:inherit] text-[12px] text-ink bg-transparent bo
 /** Exact actor inputs stay inside the established panel geometry. */
 export function ActorTools({role}:{role:'borrower'|'buyer'|'lender'}){
   const v=useBell(),c=v.controller;
-  const [purpose,setPurpose]=useState(role==='lender'?'deposit':role==='buyer'?'offer':'premium');
-  const [approval,setApproval]=useState(''),[method,setMethod]=useState('repay'),[args,setArgs]=useState('');
-  const fn=abis[role==='buyer'?'book':'manager'].find(x=>x.type==='function'&&x.name===(role==='buyer'?'postOffer':'borrowWithCover')) as any;
-  const fields=fn.inputs[0].components.map((x:any)=>`${x.name}: ${x.type}`).join('\n');
+  const [purpose,setPurpose]=useState(role==='lender'?'deposit':role==='buyer'?'offer':'collateral');
+  const [approval,setApproval]=useState('');const method=v.loanMethod,args=v.loanArgs;
+  const fn=(role==='buyer'?abis.book:abis.manager).find(x=>x.type==='function'&&x.name===(role==='buyer'?'postOffer':'buyCover')) as any;
+  const fields=(fn?.inputs[role==='buyer'?0:1]?.components??[]).map((x:any)=>`${x.name}: ${x.type}`).join('\n');
   let review='Complete consent and select whole lots to review the exact transaction hash.';
   if(role==='borrower'&&v.quoteText&&v.selected.length&&c.manifest)try{review=hashBundle(c.manifest.chainId,c.manifest.addresses.manager,JSON.parse(v.quoteText),v.selected,v.selected.map((id:string)=>v.frame?.state.termsHashes[id]));}catch{review='Consent is incomplete or malformed. No transaction is ready.';}
   return <details className="text-[10px] tracking-[0.16em] text-muted">
@@ -36,15 +36,16 @@ export function ActorTools({role}:{role:'borrower'|'buyer'|'lender'}){
         <button className={button} disabled={!v.ready} onClick={()=>void c.run(()=>c.send({contract:'book',method:'withdrawCashCredit',args:[v.frame.state.balances[v.account].cashCredit.toString(),v.account]}))}>WITHDRAW CASH CREDIT</button>
       </>}
       {role==='borrower'&&<>
-        <label>EXACT BORROW CONSENT · RAW INTEGER STRINGS<textarea className={input} aria-label="Borrow consent" rows={8} value={v.quoteText} onChange={e=>c.set('quoteText',e.target.value)}/></label>
+        <label>COVER CONSENT PREVIEW · RAW INTEGER STRINGS<textarea className={input} aria-label="Cover consent" rows={8} value={v.quoteText} onChange={e=>c.set('quoteText',e.target.value)}/></label>
         <pre className="whitespace-pre-wrap wrap-anywhere">{fields}</pre>
-        <span>Select one to eight FREE whole lots in required order. The contract validates totals, limits, deadline, nonce and the complete atomic bundle. Supplied consent is not a confirmed loan.</span>
-        <pre className="whitespace-pre-wrap wrap-anywhere">{json({selected:v.selected,termsHashes:v.selected.map((id:string)=>v.frame?.state.termsHashes[id])})}</pre>
-        <output className="wrap-anywhere" aria-label="Exact borrow quote hash">{review}</output>
-        <label>RECEIPT ACTION<select className={input} aria-label="Receipt action" value={method} onChange={e=>setMethod(e.target.value)}>{['repay','addCollateral','withdrawCollateral','topUpBacking','finalizeHandoff'].map(m=><option key={m}>{m}</option>)}</select></label>
-        <label>EXACT ARGUMENT ARRAY<textarea className={input} aria-label="Receipt arguments" rows={3} value={args} onChange={e=>setArgs(e.target.value)}/></label>
-        <span>{(abis.manager.find(x=>x.type==='function'&&x.name===method) as any)?.inputs.map((p:any)=>`${p.name}: ${p.type}`).join(' · ')}</span>
-        <button className={button} disabled={!v.ready} onClick={()=>void c.run(()=>c.send({contract:'manager',method,args:JSON.parse(args)}))}>SIGN RECEIPT ACTION</button>
+        <span>Select one to eight FREE whole lots in required order. The contract validates totals, limits, deadline, nonce and this cover agreement. Preview metadata is unconfirmed; retain your debt and fee bounds.</span>
+        <pre className="whitespace-pre-wrap wrap-anywhere">{json({loanId:v.loanId,receiptId:v.receiptId,coverStatus:v.coverStatus,selected:v.selected,termsHashes:v.selected.map((id:string)=>v.frame?.state.termsHashes[id])})}</pre>
+        <output className="wrap-anywhere" aria-label="Exact cover quote hash">{review}</output>
+        {(v.coverOptions.length>0||v.showCoverPreview)&&<label>SESSION RECEIPT<select className={input} aria-label="Cover receipt" value={v.receiptId??''} onChange={v.onCover}>{v.quoteText&&v.selected.length>0&&<option value="">UNCONFIRMED PREVIEW</option>}{v.coverOptions.map((r:any)=><option key={r.id} value={r.id}>{r.label}</option>)}</select></label>}
+        <label>LOAN ACTION<select className={input} aria-label="Loan action" value={method} onChange={e=>c.set('loanMethod',e.target.value)}>{['borrow','repay','addCollateral','withdrawCollateral','liquidate','topUpBacking','finalizeHandoff'].map(m=><option key={m}>{m}</option>)}</select></label>
+        <label>EXACT ARGUMENT ARRAY · ENTER PRINCIPAL AND COLLATERAL FOR BORROW<textarea className={input} aria-label="Loan arguments" rows={3} value={args} onChange={e=>c.set('loanArgs',e.target.value)}/></label>
+        <span>{(abis.loanManager.find(x=>x.type==='function'&&x.name===method) as any)?.inputs.map((p:any)=>`${p.name}: ${p.type}${p.components?' · '+p.components.map((x:any)=>x.name+': '+x.type).join(' · '):''}`).join(' · ')}</span>
+        <button className={button} disabled={!v.ready} onClick={()=>void c.run(()=>c.loanAction())}>SIGN LOAN ACTION</button>
       </>}
     </div>
   </details>;

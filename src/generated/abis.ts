@@ -28,26 +28,18 @@ export const abis = {
           "name": "vault_",
           "type": "address",
           "internalType": "address"
-        }
-      ],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "addCollateral",
-      "inputs": [
-        {
-          "name": "receiptId",
-          "type": "uint256",
-          "internalType": "uint256"
         },
         {
-          "name": "snapshotShares",
-          "type": "uint256",
-          "internalType": "uint256"
+          "name": "loanManager_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "profile_",
+          "type": "uint8",
+          "internalType": "enum CoverManager.Profile"
         }
       ],
-      "outputs": [],
       "stateMutability": "nonpayable"
     },
     {
@@ -65,8 +57,32 @@ export const abis = {
     },
     {
       "type": "function",
-      "name": "borrowWithCover",
+      "name": "borrowerNonce",
       "inputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "buyCover",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
         {
           "name": "quote",
           "type": "tuple",
@@ -176,6 +192,26 @@ export const abis = {
               "name": "maxSettlementDeadline",
               "type": "uint64",
               "internalType": "uint64"
+            },
+            {
+              "name": "loanId",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "maxDebtAtAcceptance",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "maxDebtAtDeadline",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "referenceReportHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
             }
           ]
         },
@@ -206,54 +242,29 @@ export const abis = {
     },
     {
       "type": "function",
-      "name": "borrowerNonce",
-      "inputs": [
-        {
-          "name": "",
-          "type": "address",
-          "internalType": "address"
-        }
-      ],
+      "name": "coverCutoffBeforeClose",
+      "inputs": [],
       "outputs": [
         {
           "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
+          "type": "uint64",
+          "internalType": "uint64"
         }
       ],
       "stateMutability": "view"
     },
     {
       "type": "function",
-      "name": "debtOf",
-      "inputs": [
-        {
-          "name": "receiptId",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
+      "name": "coverOpensBeforeClose",
+      "inputs": [],
       "outputs": [
         {
           "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
+          "type": "uint64",
+          "internalType": "uint64"
         }
       ],
       "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "finalizeHandoff",
-      "inputs": [
-        {
-          "name": "receiptId",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
     },
     {
       "type": "function",
@@ -271,6 +282,11 @@ export const abis = {
           "type": "tuple",
           "internalType": "struct CoverManager.Receipt",
           "components": [
+            {
+              "name": "loanId",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
             {
               "name": "consent",
               "type": "tuple",
@@ -380,6 +396,26 @@ export const abis = {
                   "name": "maxSettlementDeadline",
                   "type": "uint64",
                   "internalType": "uint64"
+                },
+                {
+                  "name": "loanId",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                },
+                {
+                  "name": "maxDebtAtAcceptance",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                },
+                {
+                  "name": "maxDebtAtDeadline",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                },
+                {
+                  "name": "referenceReportHash",
+                  "type": "bytes32",
+                  "internalType": "bytes32"
                 }
               ]
             },
@@ -466,9 +502,24 @@ export const abis = {
               "internalType": "uint64"
             },
             {
+              "name": "opensAt",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "cutoffAt",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
               "name": "settlementDeadline",
               "type": "uint64",
               "internalType": "uint64"
+            },
+            {
+              "name": "debtAtAcceptance",
+              "type": "uint256",
+              "internalType": "uint256"
             },
             {
               "name": "debtCeiling",
@@ -507,6 +558,19 @@ export const abis = {
     },
     {
       "type": "function",
+      "name": "loanManager",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "contract LoanManager"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
       "name": "nextReceiptId",
       "inputs": [],
       "outputs": [
@@ -533,6 +597,45 @@ export const abis = {
     },
     {
       "type": "function",
+      "name": "policyHash",
+      "inputs": [
+        {
+          "name": "assetId",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "sessionId",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "configHash",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "loanN",
+          "type": "uint128",
+          "internalType": "uint128"
+        },
+        {
+          "name": "loanD",
+          "type": "uint128",
+          "internalType": "uint128"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
       "name": "pool",
       "inputs": [],
       "outputs": [
@@ -540,6 +643,19 @@ export const abis = {
           "name": "",
           "type": "address",
           "internalType": "contract ProtectedPool"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "profile",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint8",
+          "internalType": "enum CoverManager.Profile"
         }
       ],
       "stateMutability": "view"
@@ -559,21 +675,48 @@ export const abis = {
     },
     {
       "type": "function",
-      "name": "repay",
+      "name": "releaseForLiquidation",
       "inputs": [
         {
           "name": "receiptId",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "amount",
           "type": "uint256",
           "internalType": "uint256"
         }
       ],
       "outputs": [],
       "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "releaseForLoanClosure",
+      "inputs": [
+        {
+          "name": "receiptId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "reservedShares",
+      "inputs": [
+        {
+          "name": "receiptId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
     },
     {
       "type": "function",
@@ -603,24 +746,6 @@ export const abis = {
     },
     {
       "type": "function",
-      "name": "topUpBacking",
-      "inputs": [
-        {
-          "name": "receiptId",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "tokenUnits",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
       "name": "vault",
       "inputs": [],
       "outputs": [
@@ -631,24 +756,6 @@ export const abis = {
         }
       ],
       "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "withdrawCollateral",
-      "inputs": [
-        {
-          "name": "receiptId",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "snapshotShares",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
     },
     {
       "type": "event",
@@ -689,7 +796,7 @@ export const abis = {
     },
     {
       "type": "event",
-      "name": "CollateralAdded",
+      "name": "CoverEnded",
       "inputs": [
         {
           "name": "receiptId",
@@ -698,23 +805,23 @@ export const abis = {
           "internalType": "uint256"
         },
         {
-          "name": "payer",
-          "type": "address",
+          "name": "loanId",
+          "type": "uint256",
           "indexed": true,
-          "internalType": "address"
+          "internalType": "uint256"
         },
         {
-          "name": "snapshotShares",
-          "type": "uint256",
+          "name": "outcome",
+          "type": "uint8",
           "indexed": false,
-          "internalType": "uint256"
+          "internalType": "uint8"
         }
       ],
       "anonymous": false
     },
     {
       "type": "event",
-      "name": "CollateralWithdrawn",
+      "name": "CoverPurchased",
       "inputs": [
         {
           "name": "receiptId",
@@ -723,35 +830,10 @@ export const abis = {
           "internalType": "uint256"
         },
         {
-          "name": "borrower",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        },
-        {
-          "name": "snapshotShares",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "CoveredBorrowCreated",
-      "inputs": [
-        {
-          "name": "receiptId",
+          "name": "loanId",
           "type": "uint256",
           "indexed": true,
           "internalType": "uint256"
-        },
-        {
-          "name": "borrower",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
         },
         {
           "name": "sessionId",
@@ -766,13 +848,25 @@ export const abis = {
           "internalType": "bytes32"
         },
         {
-          "name": "principal",
+          "name": "debtAtAcceptance",
           "type": "uint256",
           "indexed": false,
           "internalType": "uint256"
         },
         {
-          "name": "startTime",
+          "name": "debtCeiling",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "opensAt",
+          "type": "uint64",
+          "indexed": false,
+          "internalType": "uint64"
+        },
+        {
+          "name": "cutoffAt",
           "type": "uint64",
           "indexed": false,
           "internalType": "uint64"
@@ -782,57 +876,6 @@ export const abis = {
           "type": "uint64",
           "indexed": false,
           "internalType": "uint64"
-        },
-        {
-          "name": "debtCeiling",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "FinanciallyClosed",
-      "inputs": [
-        {
-          "name": "receiptId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "borrowerClaimId",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "HandoffPending",
-      "inputs": [
-        {
-          "name": "receiptId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "ReceiptClosed",
-      "inputs": [
-        {
-          "name": "receiptId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
         }
       ],
       "anonymous": false
@@ -867,37 +910,6 @@ export const abis = {
         },
         {
           "name": "debtApplied",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "Repaid",
-      "inputs": [
-        {
-          "name": "receiptId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "payer",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        },
-        {
-          "name": "amount",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "debtAfter",
           "type": "uint256",
           "indexed": false,
           "internalType": "uint256"
@@ -952,6 +964,11 @@ export const abis = {
     },
     {
       "type": "error",
+      "name": "DebtLimitExceeded",
+      "inputs": []
+    },
+    {
+      "type": "error",
       "name": "HandoffIncomplete",
       "inputs": []
     },
@@ -988,7 +1005,7 @@ export const abis = {
     },
     {
       "type": "error",
-      "name": "InvalidDebtApplied",
+      "name": "InvalidCoverWindow",
       "inputs": []
     },
     {
@@ -1009,12 +1026,17 @@ export const abis = {
     },
     {
       "type": "error",
-      "name": "InvalidExerciseShares",
+      "name": "InvalidLoanConsent",
       "inputs": []
     },
     {
       "type": "error",
       "name": "InvalidLotShares",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidMultiplier",
       "inputs": []
     },
     {
@@ -1045,6 +1067,11 @@ export const abis = {
     },
     {
       "type": "error",
+      "name": "InvalidPolicy",
+      "inputs": []
+    },
+    {
+      "type": "error",
       "name": "InvalidReceiptId",
       "inputs": []
     },
@@ -1062,27 +1089,6 @@ export const abis = {
       "type": "error",
       "name": "InvalidSettlementLtv",
       "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "InvalidTimeRange",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "InvalidTokenBalanceDelta",
-      "inputs": [
-        {
-          "name": "expected",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "actual",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ]
     },
     {
       "type": "error",
@@ -1141,17 +1147,6 @@ export const abis = {
     },
     {
       "type": "error",
-      "name": "SafeERC20FailedOperation",
-      "inputs": [
-        {
-          "name": "token",
-          "type": "address",
-          "internalType": "address"
-        }
-      ]
-    },
-    {
-      "type": "error",
       "name": "SettlementDeadlineNotReached",
       "inputs": []
     },
@@ -1173,17 +1168,23 @@ export const abis = {
     },
     {
       "type": "error",
+      "name": "UnauthorizedManager",
+      "inputs": [
+        {
+          "name": "caller",
+          "type": "address",
+          "internalType": "address"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "UnsupportedCashAmount",
       "inputs": []
     },
     {
       "type": "error",
       "name": "UnsupportedPrice",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "UnsupportedRate",
       "inputs": []
     },
     {
@@ -1204,6 +1205,1327 @@ export const abis = {
     {
       "type": "error",
       "name": "ZeroStrike",
+      "inputs": []
+    }
+  ],
+  "loanManager": [
+    {
+      "type": "constructor",
+      "inputs": [
+        {
+          "name": "registry_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "oracle_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "pool_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "vault_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "owner_",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "addCollateral",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "snapshotShares",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "applyCoverFill",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "receiptId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "debtApplied",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "buyer",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "shares",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "reportN",
+          "type": "uint128",
+          "internalType": "uint128"
+        },
+        {
+          "name": "reportD",
+          "type": "uint128",
+          "internalType": "uint128"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "claimId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "beginCover",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "receiptId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "sessionId",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "deadline",
+          "type": "uint64",
+          "internalType": "uint64"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "snapshot",
+          "type": "tuple",
+          "internalType": "struct LoanManager.CoverSnapshot",
+          "components": [
+            {
+              "name": "borrower",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "recipient",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "assetId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "originalPrincipal",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "startTime",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "rateNumerator",
+              "type": "uint32",
+              "internalType": "uint32"
+            },
+            {
+              "name": "rateDenominator",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "debtNow",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "debtAtDeadline",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "remainingCollateralShares",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "loanSnapshotMultiplierNumerator",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "loanSnapshotMultiplierDenominator",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "activeCoverId",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ]
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "beginCoverSettlement",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "receiptId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "bindCoverManager",
+      "inputs": [
+        {
+          "name": "manager",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "borrow",
+      "inputs": [
+        {
+          "name": "request",
+          "type": "tuple",
+          "internalType": "struct LoanManager.BorrowRequest",
+          "components": [
+            {
+              "name": "assetId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "configVersion",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "configHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "principal",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "collateralShares",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "recipient",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "referenceReportHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "expiry",
+              "type": "uint64",
+              "internalType": "uint64"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "completeCoverActivation",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "receiptId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "coverManager",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "coverSnapshot",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "deadline",
+          "type": "uint64",
+          "internalType": "uint64"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "tuple",
+          "internalType": "struct LoanManager.CoverSnapshot",
+          "components": [
+            {
+              "name": "borrower",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "recipient",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "assetId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "originalPrincipal",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "startTime",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "rateNumerator",
+              "type": "uint32",
+              "internalType": "uint32"
+            },
+            {
+              "name": "rateDenominator",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "debtNow",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "debtAtDeadline",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "remainingCollateralShares",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "loanSnapshotMultiplierNumerator",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "loanSnapshotMultiplierDenominator",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "activeCoverId",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ]
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "coverWindowCutoffAt",
+      "inputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint64",
+          "internalType": "uint64"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "coverWindowOpensAt",
+      "inputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint64",
+          "internalType": "uint64"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "debtOf",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "finalizeHandoff",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "finishCoverSettlement",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "receiptId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "reportN",
+          "type": "uint128",
+          "internalType": "uint128"
+        },
+        {
+          "name": "reportD",
+          "type": "uint128",
+          "internalType": "uint128"
+        },
+        {
+          "name": "terminal",
+          "type": "bool",
+          "internalType": "bool"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "getLoan",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "tuple",
+          "internalType": "struct LoanManager.Loan",
+          "components": [
+            {
+              "name": "borrower",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "recipient",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "assetId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "configVersion",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "configHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "config",
+              "type": "tuple",
+              "internalType": "struct Types.AssetConfig",
+              "components": [
+                {
+                  "name": "assetToken",
+                  "type": "address",
+                  "internalType": "address"
+                },
+                {
+                  "name": "stockTokenDecimals",
+                  "type": "uint8",
+                  "internalType": "uint8"
+                },
+                {
+                  "name": "cashTokenDecimals",
+                  "type": "uint8",
+                  "internalType": "uint8"
+                },
+                {
+                  "name": "originationLtvBps",
+                  "type": "uint16",
+                  "internalType": "uint16"
+                },
+                {
+                  "name": "targetLtvBps",
+                  "type": "uint16",
+                  "internalType": "uint16"
+                },
+                {
+                  "name": "triggerLtvBps",
+                  "type": "uint16",
+                  "internalType": "uint16"
+                },
+                {
+                  "name": "rateNumerator",
+                  "type": "uint32",
+                  "internalType": "uint32"
+                },
+                {
+                  "name": "rateDenominator",
+                  "type": "uint64",
+                  "internalType": "uint64"
+                },
+                {
+                  "name": "maxFills",
+                  "type": "uint8",
+                  "internalType": "uint8"
+                },
+                {
+                  "name": "maxActiveReceipts",
+                  "type": "uint8",
+                  "internalType": "uint8"
+                },
+                {
+                  "name": "supportedCorporateActions",
+                  "type": "uint8",
+                  "internalType": "uint8"
+                }
+              ]
+            },
+            {
+              "name": "status",
+              "type": "uint8",
+              "internalType": "enum LoanManager.LoanStatus"
+            },
+            {
+              "name": "activeCoverId",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "lastCoveredSessionId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ]
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "liquidate",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "maxRepay",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "loanOfReceipt",
+      "inputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "nextLoanId",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "oracle",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "contract SessionOracle"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "owner",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "pool",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "contract ProtectedPool"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "registry",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "contract AssetRegistry"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "repay",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "amount",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "topUpBacking",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "tokenUnits",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "vault",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "contract LoanVault"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "withdrawCollateral",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "snapshotShares",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "event",
+      "name": "BadDebt",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "amount",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "ClaimCreated",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "claimId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "owner",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "snapshotShares",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "CollateralAdded",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "payer",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "snapshotShares",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "CollateralWithdrawn",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "borrower",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "snapshotShares",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "FinanciallyClosed",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "borrowerClaimId",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "HandoffPending",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "Liquidated",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "liquidator",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "repaid",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "seizedShares",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "claimId",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "LoanClosed",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "LoanOpened",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "borrower",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "assetId",
+          "type": "bytes32",
+          "indexed": true,
+          "internalType": "bytes32"
+        },
+        {
+          "name": "recipient",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        },
+        {
+          "name": "principal",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "collateralShares",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "startTime",
+          "type": "uint64",
+          "indexed": false,
+          "internalType": "uint64"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "Repaid",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "payer",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "amount",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "debtAfter",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "RoundingDustReleased",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "snapshotShares",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "error",
+      "name": "AlreadyInitialized",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "BorrowerLtvTooHigh",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "CashDebtTransition",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "ComponentMismatch",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "ConfigNotEffective",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "CoverDeadlineReached",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "CoveredCollateralReserved",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "HandoffIncomplete",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "HealthyLoan",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InsufficientBacking",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InsufficientLiquidity",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidBorrower",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidCover",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidCoverWindow",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidDebtApplied",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidDecimals",
+      "inputs": [
+        {
+          "name": "stockTokenDecimals",
+          "type": "uint8",
+          "internalType": "uint8"
+        },
+        {
+          "name": "cashTokenDecimals",
+          "type": "uint8",
+          "internalType": "uint8"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "InvalidExerciseShares",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidMultiplier",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidReceiptId",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidTimeRange",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidTokenBalanceDelta",
+      "inputs": [
+        {
+          "name": "expected",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "actual",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LoanNotActive",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LoanNotPending",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "MathResultOverflow",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "ReentrancyGuardReentrantCall",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "ReferenceFactsMismatch",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RequestExpired",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "SafeERC20FailedOperation",
+      "inputs": [
+        {
+          "name": "token",
+          "type": "address",
+          "internalType": "address"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "SlippageExceeded",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "Unauthorized",
+      "inputs": [
+        {
+          "name": "caller",
+          "type": "address",
+          "internalType": "address"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "UnauthorizedManager",
+      "inputs": [
+        {
+          "name": "caller",
+          "type": "address",
+          "internalType": "address"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "UnsupportedCashAmount",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "UnsupportedLiquidationTarget",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "UnsupportedPrice",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "UnsupportedShareAmount",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "ZeroAddress",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "ZeroDelivery",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "ZeroDenominator",
       "inputs": []
     }
   ],
@@ -2887,6 +4209,25 @@ export const abis = {
     },
     {
       "type": "function",
+      "name": "activeCoverDeadline",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "deadline",
+          "type": "uint64",
+          "internalType": "uint64"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
       "name": "addCollateral",
       "inputs": [
         {
@@ -2936,6 +4277,19 @@ export const abis = {
         }
       ],
       "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "clearCoverDeadline",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
       "type": "function",
@@ -3080,6 +4434,68 @@ export const abis = {
         }
       ],
       "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "deliveryUnitsFor",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "shares",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "reportN",
+          "type": "uint128",
+          "internalType": "uint128"
+        },
+        {
+          "name": "reportD",
+          "type": "uint128",
+          "internalType": "uint128"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "discardRoundingDust",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "shares",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "reportN",
+          "type": "uint128",
+          "internalType": "uint128"
+        },
+        {
+          "name": "reportD",
+          "type": "uint128",
+          "internalType": "uint128"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
       "type": "function",
@@ -3295,6 +4711,30 @@ export const abis = {
     },
     {
       "type": "function",
+      "name": "projectedDebtOf",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "timestamp",
+          "type": "uint64",
+          "internalType": "uint64"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
       "name": "recordClaim",
       "inputs": [
         {
@@ -3431,6 +4871,24 @@ export const abis = {
         }
       ],
       "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "setCoverDeadline",
+      "inputs": [
+        {
+          "name": "loanId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "deadline",
+          "type": "uint64",
+          "internalType": "uint64"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
       "type": "function",
@@ -4983,6 +6441,490 @@ export const abis = {
     },
     {
       "type": "function",
+      "name": "latestReference",
+      "inputs": [
+        {
+          "name": "assetId",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "tuple",
+          "internalType": "struct Types.ReferencePriceFact",
+          "components": [
+            {
+              "name": "assetId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "sessionId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "configHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "price",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "multiplierNumerator",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "multiplierDenominator",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "observedAt",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "validUntil",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "corporateActionHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "primarySourceHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "secondarySourceHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "reportHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ]
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "marketSnapshot",
+      "inputs": [
+        {
+          "name": "assetId",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "sessionId",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "referenceSessionId",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "state",
+          "type": "tuple",
+          "internalType": "struct Types.AssetState",
+          "components": [
+            {
+              "name": "nextNonce",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "stateHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "configHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "activeSessionId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "halted",
+              "type": "bool",
+              "internalType": "bool"
+            },
+            {
+              "name": "latestCorporateActionHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ]
+        },
+        {
+          "name": "session",
+          "type": "tuple",
+          "internalType": "struct Types.SessionFact",
+          "components": [
+            {
+              "name": "assetId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "configHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "scheduledOpen",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "scheduledClose",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "closeObservedAt",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "reopenObservedAt",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "phase",
+              "type": "uint8",
+              "internalType": "enum Types.SessionPhase"
+            },
+            {
+              "name": "scheduledReportHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "closeReportHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "reopenReportHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ]
+        },
+        {
+          "name": "activeSession",
+          "type": "tuple",
+          "internalType": "struct Types.SessionFact",
+          "components": [
+            {
+              "name": "assetId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "configHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "scheduledOpen",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "scheduledClose",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "closeObservedAt",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "reopenObservedAt",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "phase",
+              "type": "uint8",
+              "internalType": "enum Types.SessionPhase"
+            },
+            {
+              "name": "scheduledReportHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "closeReportHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "reopenReportHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ]
+        },
+        {
+          "name": "benchmark",
+          "type": "tuple",
+          "internalType": "struct Types.Benchmark",
+          "components": [
+            {
+              "name": "finalized",
+              "type": "bool",
+              "internalType": "bool"
+            },
+            {
+              "name": "assetId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "sessionId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "configHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "price",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "multiplierNumerator",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "multiplierDenominator",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "observedAt",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "primarySourceHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "secondarySourceHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "reportHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ]
+        },
+        {
+          "name": "referenceBenchmark",
+          "type": "tuple",
+          "internalType": "struct Types.Benchmark",
+          "components": [
+            {
+              "name": "finalized",
+              "type": "bool",
+              "internalType": "bool"
+            },
+            {
+              "name": "assetId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "sessionId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "configHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "price",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "multiplierNumerator",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "multiplierDenominator",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "observedAt",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "primarySourceHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "secondarySourceHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "reportHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ]
+        },
+        {
+          "name": "corporate",
+          "type": "tuple",
+          "internalType": "struct Types.CorporateActionFact",
+          "components": [
+            {
+              "name": "action",
+              "type": "uint8",
+              "internalType": "enum Types.CorporateAction"
+            },
+            {
+              "name": "actionId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "multiplierNumerator",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "multiplierDenominator",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "observedAt",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "reportHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ]
+        },
+        {
+          "name": "referenceFact",
+          "type": "tuple",
+          "internalType": "struct Types.ReferencePriceFact",
+          "components": [
+            {
+              "name": "assetId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "sessionId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "configHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "price",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "multiplierNumerator",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "multiplierDenominator",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "observedAt",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "validUntil",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "corporateActionHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "primarySourceHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "secondarySourceHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "reportHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ]
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
       "name": "owner",
       "inputs": [],
       "outputs": [
@@ -5003,6 +6945,87 @@ export const abis = {
           "name": "",
           "type": "address",
           "internalType": "address"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "requireFreshReference",
+      "inputs": [
+        {
+          "name": "assetId",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "fact",
+          "type": "tuple",
+          "internalType": "struct Types.ReferencePriceFact",
+          "components": [
+            {
+              "name": "assetId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "sessionId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "configHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "price",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "multiplierNumerator",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "multiplierDenominator",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "observedAt",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "validUntil",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "corporateActionHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "primarySourceHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "secondarySourceHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "reportHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ]
         }
       ],
       "stateMutability": "view"
@@ -5187,6 +7210,22 @@ export const abis = {
     },
     {
       "type": "error",
+      "name": "AssetHalted",
+      "inputs": [
+        {
+          "name": "assetId",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "DuplicateSourceEvidence",
+      "inputs": []
+    },
+    {
+      "type": "error",
       "name": "FinalBenchmarkAlreadyAccepted",
       "inputs": [
         {
@@ -5251,6 +7290,16 @@ export const abis = {
     },
     {
       "type": "error",
+      "name": "InvalidReferenceAction",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidReferenceValidity",
+      "inputs": []
+    },
+    {
+      "type": "error",
       "name": "InvalidReportKind",
       "inputs": []
     },
@@ -5293,8 +7342,46 @@ export const abis = {
     },
     {
       "type": "error",
+      "name": "NonMonotonicReference",
+      "inputs": [
+        {
+          "name": "previousObservedAt",
+          "type": "uint64",
+          "internalType": "uint64"
+        },
+        {
+          "name": "observedAt",
+          "type": "uint64",
+          "internalType": "uint64"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "ReceiverAlreadyBound",
       "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "ReferenceSessionNotOpen",
+      "inputs": [
+        {
+          "name": "sessionId",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "ReferenceUnavailable",
+      "inputs": [
+        {
+          "name": "assetId",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ]
     },
     {
       "type": "error",
@@ -5320,6 +7407,22 @@ export const abis = {
           "name": "sessionId",
           "type": "bytes32",
           "internalType": "bytes32"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "StaleReference",
+      "inputs": [
+        {
+          "name": "observedAt",
+          "type": "uint64",
+          "internalType": "uint64"
+        },
+        {
+          "name": "currentTime",
+          "type": "uint64",
+          "internalType": "uint64"
         }
       ]
     },
@@ -5355,6 +7458,11 @@ export const abis = {
           "internalType": "enum Types.CorporateAction"
         }
       ]
+    },
+    {
+      "type": "error",
+      "name": "UnsupportedPrice",
+      "inputs": []
     },
     {
       "type": "error",

@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 async function module(){const m=await import('../../src/adapter/transport.ts').catch(()=>null);assert.ok(m,'transport required');return m;}
 test('review 6: uint arrays retain the full ABI width independently of their array index',async()=>{
   const m=await module(),hash=`0x${'ab'.repeat(32)}`;
-  const frame=m.decodeFrame({block:{number:'1',hash,timestamp:'2'},state:{pool:{activeReceiptIds:['1','9007199254740993']}}});
-  assert.deepEqual(frame.state.pool.activeReceiptIds,[1n,9007199254740993n]);
+  const frame=m.decodeFrame({block:{number:'1',hash,timestamp:'2'},state:{pool:{activeLoanIds:['1','9007199254740993']}}});
+  assert.deepEqual(frame.state.pool.activeLoanIds,[1n,9007199254740993n]);
 });
 test('review 4: event schema supports generated ABI name variants without accepting malformed financial args',async()=>{
   const m=await module(),hash=`0x${'ab'.repeat(32)}`,account=`0x${'ab'.repeat(20)}`;
@@ -15,7 +15,7 @@ test('review 4: event schema supports generated ABI name variants without accept
 test('review 6: schema rejects hex, boolean and null money while preserving explicit identifiers',async()=>{
   const m=await module(),hash=`0x${'ab'.repeat(32)}`,account=`0x${'ab'.repeat(20)}`;
   const wrap=(state:any)=>({block:{number:'1',hash,timestamp:'2'},state});
-  for(const debt of ['0x10',true,false,null,'01',1])assert.throws(()=>m.decodeFrame(wrap({receipts:{'1':{debt}}})),/integer/);
+  for(const debt of ['0x10',true,false,null,'01',1])assert.throws(()=>m.decodeFrame(wrap({loans:{'1':{debt}}})),/integer/);
   for(const cash of ['0x10',true,null])assert.throws(()=>m.decodeFrame(wrap({balances:{[account]:{cash}}})),/integer/);
   const frame=m.decodeFrame(wrap({termsHashes:{[hash]:hash},balances:{[account]:{cash:'16',restricted:false}},tokens:{stock:{symbol:'0x10',decimals:'18',paused:false}}}));
   assert.equal(frame.state.termsHashes[hash],hash);assert.equal(frame.state.balances[account].cash,16n);assert.equal(frame.state.tokens.stock.symbol,'0x10');
@@ -35,5 +35,5 @@ test('browser fetch retains its global receiver instead of the Transport instanc
   const m=await module();const transport=new m.Transport('/api',async function(this:unknown){assert.equal(this,globalThis);return new Response('{}');} as any);await transport.manifest();
 });
 test('financial snapshot values reject negative, scientific, and arbitrary string amounts',async()=>{
-  const m=await module();for(const debt of ['-1','1e3','banana',''])assert.throws(()=>m.decodeFrame({block:{number:'1',hash:`0x${'ab'.repeat(32)}`,timestamp:'1'},state:{receipts:{'1':{debt}}}}),/integer/);
+  const m=await module();for(const debt of ['-1','1e3','banana',''])assert.throws(()=>m.decodeFrame({block:{number:'1',hash:`0x${'ab'.repeat(32)}`,timestamp:'1'},state:{loans:{'1':{debt}}}}),/integer/);
 });

@@ -31,17 +31,22 @@ const output=(contract:keyof typeof abis,name:string,index=0):AbiParameter=>{
 const read=(contract:keyof typeof abis,name:string)=>abiValue(output(contract,name));
 const offerParts=(output('book','getOffer') as any).components as AbiParameter[];
 const offer=fields(Object.fromEntries(offerParts.map(p=>[p.name!,abiValue(p)])));
-const position=fields({receipt:read('manager','getReceipt'),debt:uint,debtRecord:read('vault','getDebt'),remainingShares:uint,backing:uint,outstandingUnits:uint,benchmark:read('oracle','benchmarkOf'),assetState:read('oracle','assetState'),receiptRemainingCoverage:uint});
-const balance=fields({...Object.fromEntries(['cash','stock','premiumCredit','cashCredit','poolShares','cashAllowanceManager','stockAllowanceVault','borrowerNonce','cashAllowancePool','cashAllowanceBook','nativeGas'].map(k=>[k,uint])),restricted:boolean});
+const loan=fields({loan:read('loanManager','getLoan'),debt:uint,debtRecord:read('vault','getDebt'),remainingShares:uint,backing:uint,outstandingUnits:uint,activeCoverDeadline:v=>uint(v,64),opensAt:v=>uint(v,64),cutoffAt:v=>uint(v,64),currentCoverage:uint});
+const receipt=fields({receipt:read('manager','getReceipt'),benchmark:read('oracle','benchmarkOf'),receiptRemainingCoverage:uint});
+const balance=fields({...Object.fromEntries(['cash','stock','premiumCredit','cashCredit','poolShares','cashAllowanceLoanManager','stockAllowanceVault','borrowerNonce','cashAllowancePool','cashAllowanceBook','nativeGas'].map(k=>[k,uint])),restricted:boolean});
 const config=fields({config:abiValue(output('registry','getConfig')),effectiveAt:value=>uint(value,64),configHash:hex(32)});
+const bytes:Decoder=v=>{if(typeof v!=='string'||!/^0x([0-9a-fA-F]{2})*$/.test(v))throw Error('Invalid bytes');return v.toLowerCase();};
 const decodeState=fields({
+  loans:record(uint,loan),receipts:record(uint,receipt),
   offerCoverage:record(hex(32),fields({currentLockedCash:uint})),
-  receipts:record(uint,position),offers:record(hex(32),offer),termsHashes:record(hex(32),hex(32)),claims:record(uint,read('vault','getClaim')),balances:record(hex(20),balance),
-  assets:record(hex(32),fields({configs:record(uint,config),state:read('oracle','assetState'),corporateAction:read('oracle','latestCorporateAction')})),
+  offers:record(hex(32),offer),termsHashes:record(hex(32),hex(32)),claims:record(uint,read('vault','getClaim')),balances:record(hex(20),balance),
+  assets:record(hex(32),fields({configs:record(uint,config),state:read('oracle','assetState'),corporateAction:read('oracle','latestCorporateAction'),latestReference:read('oracle','latestReference'),referenceCheck:fields({ok:boolean,referenceInvalidated:boolean,revertData:bytes})})),
   sessions:record(hex(32),fields({fact:read('oracle','sessionFact'),benchmark:read('oracle','benchmarkOf')})),
+  stockTokens:record(hex(20),fields({symbol:string,decimals:v=>uint(v,8),accountedBacking:uint,paused:boolean,balances:record(hex(20),fields({balance:uint,allowanceVault:uint,restricted:boolean}))})),
+  coverPolicy:fields({profile:v=>uint(v,8),coverOpensBeforeClose:v=>uint(v,64),coverCutoffBeforeClose:v=>uint(v,64)}),
   tokens:fields({cash:fields({symbol:string,decimals:value=>uint(value,8)}),stock:fields({symbol:string,decimals:value=>uint(value,8),paused:boolean})}),
-  receiverMode:value=>value===null?null:uint(value,8),pool:fields({totalAssets:uint,totalSupply:uint,activeReceiptIds:array(uint)}),
-  book:fields({totalLockedCash:uint,totalPremiumCredits:uint,totalCashCredits:uint}),accountedBacking:uint,nextReceiptId:uint,nextClaimId:uint
+  receiverMode:value=>value===null?null:uint(value,8),pool:fields({totalAssets:uint,totalSupply:uint,activeLoanIds:array(uint)}),
+  book:fields({totalLockedCash:uint,totalPremiumCredits:uint,totalCashCredits:uint}),nextLoanId:uint,nextReceiptId:uint,nextClaimId:uint
 });
 export function decodeFrame(value:any):Frame{
   if(!value?.block||!value.state||typeof value.state!=='object'||Array.isArray(value.state)||!/^0x[0-9a-fA-F]{64}$/.test(value.block.hash))throw Error('Coherent snapshot provenance required');

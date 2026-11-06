@@ -5,8 +5,8 @@ export interface Provider {request(args:{method:string;params?:unknown[]}):Promi
 export interface Manifest {chainId:string;deploymentBlock:string;addresses:Record<string,Address>;codeHashes:Record<string,Hex>}
 export type Intent={approval:string;amount:string}|{contract:string;method:string;args:unknown[]};
 export interface Unsigned {chainId:string;from:Address;to:Address;data:Hex;value:string;sourceBlock:string;sourceBlockHash:Hex}
-const lanes:Record<string,string[]>={pool:['deposit','redeem'],book:['postOffer','cancelOffer','withdrawPremium','withdrawCashCredit'],manager:['borrowWithCover','repay','addCollateral','withdrawCollateral','topUpBacking','finalizeHandoff'],vault:['withdrawClaim']};
-const approvals:Record<string,[string,string]>={deposit:['cash','pool'],offer:['cash','book'],premium:['cash','book'],repay:['cash','manager'],collateral:['stock','vault'],backing:['stock','vault']};
+const lanes:Record<string,string[]>={pool:['deposit','redeem'],book:['postOffer','cancelOffer','withdrawPremium','withdrawCashCredit'],loanManager:['borrow','repay','addCollateral','withdrawCollateral','liquidate','topUpBacking','finalizeHandoff'],manager:['buyCover'],vault:['withdrawClaim']};
+const approvals:Record<string,[string,string]>={deposit:['cash','pool'],offer:['cash','book'],premium:['cash','book'],repay:['cash','loanManager'],collateral:['stock','vault'],backing:['stock','vault']};
 export function argument(p:AbiParameter,value:any):any{
   if(p.type.endsWith('[]')){if(!Array.isArray(value))throw Error('Array required');return value.map(v=>argument({...p,type:p.type.slice(0,-2)} as AbiParameter,v));}
   if(p.type==='tuple'){const components=(p as any).components as AbiParameter[];if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!components.some(p=>p.name===k)))throw Error('Exact tuple required');return Object.fromEntries(components.map(p=>[p.name,argument(p,value[p.name!])]));}
