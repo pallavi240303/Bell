@@ -4,6 +4,9 @@ import { Icon } from '@/components/ui/Icon';
 import { TickNumber } from '@/components/ui/TickNumber';
 import { useBell } from '@/state/useBell';
 
+const workflowButton="[font-family:inherit] text-[11px] tracking-[0.14em] py-2.25 px-3 border border-line rounded-[10px] cursor-pointer hover:border-ink bg-transparent text-ink disabled:text-muted disabled:cursor-not-allowed";
+const workflowInput="w-full [font-family:inherit] text-[26px] font-light text-ink bg-transparent border-0 border-current border-b border-b-line py-2 px-0 outline-none rounded-none";
+
 /** Borrower view: the loan, the cover quote and buying cover inside the window. */
 export function BorrowPage() {
   const v = useBell();
@@ -53,7 +56,7 @@ export function BorrowPage() {
             </div>
             <div className="flex flex-col gap-1.5">
               <span className="text-[10px] tracking-[0.18em] text-muted">
-                {v.stockSymbol} PRICE
+                {v.stockSymbol} PRICE · {v.bell.pxSrc}
               </span>
               <span className="text-[18px]">
                 <TickNumber value={v.bell.pxFmt} className="inline-block max-w-full wrap-anywhere" />
@@ -125,6 +128,24 @@ export function BorrowPage() {
               {v.coverStatus} · Only an active session cover locks buyer cash for this loan.
             </span>
           </div>
+          <div className="flex flex-col gap-3 border-t border-t-line-soft pt-5">
+            <span className="text-[11px] tracking-[0.2em] text-muted">NEW ORDINARY LOAN</span>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] tracking-[0.18em] text-muted">PRINCIPAL · USDC</span>
+              <input className={workflowInput} aria-label="Borrow amount" inputMode="decimal" placeholder="0.00" value={v.workflow.borrowAmount} onChange={v.workflow.onBorrowAmount}/>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] tracking-[0.18em] text-muted">COLLATERAL · SHARES</span>
+              <input className={workflowInput} aria-label="Collateral shares" inputMode="decimal" placeholder="0.00" value={v.workflow.collateralAmount} onChange={v.workflow.onCollateralAmount}/>
+            </label>
+            <button className={workflowButton} disabled={!v.workflow.canApproveCollateral} onClick={v.workflow.onApproveCollateral}>APPROVE COLLATERAL</button>
+            <button className={workflowButton} disabled={!v.workflow.canBorrow} onClick={v.workflow.onBorrow}>BORROW USDC</button>
+            {!v.workflow.canBorrow&&<span className="text-[10px] tracking-[0.16em] text-muted">{v.workflow.borrowReason}</span>}
+            <div className="flex flex-wrap gap-2">
+              <button className={workflowButton} disabled={!v.workflow.canSettle} onClick={v.workflow.onSettle}>SETTLE COVER</button>
+              <button className={workflowButton} disabled={!v.workflow.canTerminalSettle} onClick={v.workflow.onTerminalSettle}>TERMINAL SETTLE</button>
+            </div>
+          </div>
         </section>
         <section className="relative border border-line-soft bg-panel p-6 flex flex-col gap-5.5 min-w-0 rounded-[16px] before:content-[''] before:absolute before:-top-0.25 before:-left-0.25 before:w-2.5 before:h-2.5 before:border-t before:border-t-ink before:border-l before:border-l-ink before:pointer-events-none after:content-[''] after:absolute after:-bottom-0.25 after:-right-0.25 after:w-2.5 after:h-2.5 after:border-b after:border-b-ink after:border-r after:border-r-ink after:pointer-events-none" data-spot="rgba(61,59,243,0.10)" aria-label="Cover">
           <div className="flex justify-between gap-3 flex-wrap">
@@ -178,6 +199,7 @@ export function BorrowPage() {
             </div>
           </div>
           <div className="flex flex-col gap-2">
+            <button className={workflowButton} disabled={!v.workflow.canApprovePremium} onClick={v.workflow.onApprovePremium}>APPROVE COVER PREMIUM</button>
             {v.buyOk && (
               <>
                 <button className="[font-family:inherit] text-[13px] tracking-[0.18em] text-ink bg-transparent [background-image:linear-gradient(#3D3BF3,#3D3BF3)] [background-repeat:no-repeat] [background-size:0%_100%] border border-ink rounded-[10px] inline-flex items-center justify-center gap-2.5 py-4 px-5 cursor-pointer [transition:background-size_450ms_cubic-bezier(0.22,1,0.36,1),_color_450ms] hover:[background-size:100%_100%] hover:text-white hover:border-indigo active:[transform:translateY(1px)]" onClick={v.onBuy}>
@@ -190,6 +212,7 @@ export function BorrowPage() {
                 <button className="[font-family:inherit] text-[13px] tracking-[0.18em] text-muted bg-transparent border border-line rounded-[10px] py-4 px-5 cursor-not-allowed" disabled>
                   SIGN COVER PURCHASE
                 </button>
+                <span className="text-[10px] tracking-[0.16em] text-muted">{v.buyReason}</span>
               </>
             )}
             <ActorTools role="borrower" />
@@ -238,7 +261,7 @@ export function BorrowPage() {
                     {q.feeFmt}
                   </span>
                   <span>
-                    <span data-provenance="hash">{q.id.slice(0, 10)}…</span>
+                    <span data-provenance="hash" title={q.termsHash}>{q.termsHash?`${q.termsHash.slice(0, 10)}…`:'—'}</span>
                   </span>
                   <span>
                     {q.shFmt}
@@ -272,11 +295,6 @@ export function BorrowPage() {
           </div>
         </div>
       </section>
-      {v.actionStatus && (
-        <div className="text-[11px] tracking-[0.16em] wrap-anywhere" style={{ color: v.actionStatusColor }}>
-          {v.actionStatus}{v.actionHash ? ' · ' : ''}{v.actionHash && v.actionExplorerUrl ? <a href={v.actionExplorerUrl} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{v.actionHash}</a> : v.actionHash}
-        </div>
-      )}
     </main>
   );
 }

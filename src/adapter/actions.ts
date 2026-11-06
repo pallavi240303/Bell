@@ -44,25 +44,31 @@ import {policyHash} from '../../engine/quote.ts';
 import {mulDivDown} from '../../engine/math.ts';
 export function position(p:any){return {...p,debt:p.debtRecord};}
 export function marketContext(frame:Frame,assetId?:string){
- const now=frame.block.timestamp;
- const entry=assetId?[assetId,frame.state.assets?.[assetId]]:Object.entries(frame.state.assets??{}).find(([,a]:any)=>a.referenceCheck?.ok);
- if(!entry?.[1])throw Error('Verified asset metadata unavailable');const [id,a]=entry as [string,any],session=frame.state.sessions?.[a.state.activeSessionId]?.fact;
- if(!a.referenceCheck?.ok||a.referenceCheck.referenceInvalidated||a.state.halted||!session||session.phase!==1n||now<session.scheduledOpen||now>=session.scheduledClose||a.latestReference.validUntil<now||a.latestReference.observedAt>now||now-a.latestReference.observedAt>1800n)throw Error('Fresh open-session reference required');
- const version=Object.entries(a.configs).find(([,c]:any)=>c.configHash===session.configHash&&c.configHash===a.state.configHash&&c.effectiveAt<=now);
- if(!version)throw Error('Effective session configuration unavailable');return {assetId:id,asset:a,session,sessionId:a.state.activeSessionId,version:version[0],config:(version[1] as any).config,configHash:(version[1] as any).configHash,reference:a.latestReference};
+ if(!frame?.state)throw Error('Loading verified chain state. Refresh before signing.');
+ const now=frame.block.timestamp,entries=assetId?[[assetId,frame.state.assets?.[assetId]]]:Object.entries(frame.state.assets??{}),ready:any[]=[];let reason='Fresh reference required. Run local CRE session/price setup, then refresh.';
+ for(const [id,value] of entries){const a=value as any;if(!a)continue;const session=frame.state.sessions?.[a.state.activeSessionId]?.fact;
+  if(a.state.halted){reason='Market is halted. Operator report required.';continue;}
+  if(!session||session.phase!==1n||now<session.scheduledOpen||now>=session.scheduledClose){reason='Session is not open or has expired. Operator must prepare a fresh CRE replay session.';continue;}
+  if(!a.referenceCheck?.ok||a.referenceCheck.referenceInvalidated||a.latestReference.validUntil<now||a.latestReference.observedAt>now||now-a.latestReference.observedAt>1800n){reason='Fresh reference required. Run the local CRE price workflow, then refresh.';continue;}
+  const version=Object.entries(a.configs).find(([,c]:any)=>c.configHash===session.configHash&&c.configHash===a.state.configHash&&c.effectiveAt<=now);
+  if(!version){reason='Effective session configuration unavailable.';continue;}
+  ready.push({assetId:id,asset:a,session,sessionId:a.state.activeSessionId,version:version[0],config:(version[1] as any).config,configHash:(version[1] as any).configHash,reference:a.latestReference});
+ }
+ if(ready.length>1)throw Error('Choose a collateral asset before preparing a transaction.');
+ if(!ready.length)throw Error(reason);return ready[0];
 }
 const raw=(v:any)=>JSON.parse(json(v));
-export function borrowRequest(frame:Frame,account:string,amounts:Record<string,unknown>={}){
- const m=marketContext(frame);return raw({assetId:m.assetId,configVersion:m.version,configHash:m.configHash,principal:'',collateralShares:'',recipient:account,referenceReportHash:m.reference.reportHash,expiry:(m.reference.validUntil<m.session.scheduledClose?m.reference.validUntil:m.session.scheduledClose-1n),...amounts});
+export function borrowRequest(frame:Frame,account:string,amounts:Record<string,unknown>={},assetId?:string){
+ const m=marketContext(frame,assetId);return raw({assetId:m.assetId,configVersion:m.version,configHash:m.configHash,principal:'',collateralShares:'',recipient:account,referenceReportHash:m.reference.reportHash,expiry:(m.reference.validUntil<m.session.scheduledClose?m.reference.validUntil:m.session.scheduledClose-1n),...amounts});
 }
-export function offerTarget(frame:Frame,selection?:string){
+export function offerTarget(frame:Frame,selection?:string,assetId?:string){
  const loans=Object.entries(frame.state.loans??{}).filter(([,p]:any)=>p.loan.status===1n);
  if(selection&&selection!=='current'){const chosen=loans.find(([id])=>id===selection);if(!chosen)throw Error('Choose an existing loan share basis');return {loanId:chosen[0],position:chosen[1] as any};}
- const m=marketContext(frame),r=m.reference,bases=new Set([`${m.assetId}:${r.multiplierNumerator}:${r.multiplierDenominator}`,...loans.map(([,p]:any)=>`${p.loan.assetId}:${p.debtRecord.terms.snapshotMultiplierNumerator}:${p.debtRecord.terms.snapshotMultiplierDenominator}`)]);
+ const m=marketContext(frame,assetId),r=m.reference,bases=new Set([`${m.assetId}:${r.multiplierNumerator}:${r.multiplierDenominator}`,...loans.map(([,p]:any)=>`${p.loan.assetId}:${p.debtRecord.terms.snapshotMultiplierNumerator}:${p.debtRecord.terms.snapshotMultiplierDenominator}`)]);
  if(!selection&&bases.size>1)throw Error('Choose a share basis: current units or an existing loan');return {loanId:'current',position:undefined};
 }
-export function offerTemplate(frame:Frame,chainId:string,manager:Address,account:string,existing:Record<string,unknown>={},selection?:string){
- const target=offerTarget(frame,selection),p=target.position,m=marketContext(frame,p?.loan.assetId),cp=frame.state.coverPolicy,r=m.reference;
+export function offerTemplate(frame:Frame,chainId:string,manager:Address,account:string,existing:Record<string,unknown>={},selection?:string,assetId?:string){
+ const target=offerTarget(frame,selection,assetId),p=target.position,m=marketContext(frame,p?.loan.assetId??assetId),cp=frame.state.coverPolicy,r=m.reference;
  const n=p?.debtRecord.terms.snapshotMultiplierNumerator??r.multiplierNumerator,d=p?.debtRecord.terms.snapshotMultiplierDenominator??r.multiplierDenominator;
  const nonces=Object.values(frame.state.offers??{}).filter((o:any)=>o.buyer===account).map((o:any)=>o.terms.nonce as bigint);
  const nonce=nonces.reduce((a,b)=>a>b?a:b,-1n)+1n;

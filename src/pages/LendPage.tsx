@@ -57,6 +57,7 @@ export function LendPage() {
             </span>
           </label>
           <div className="flex flex-col gap-1.5">
+          <button className="[font-family:inherit] text-[11px] tracking-[0.14em] py-2.25 px-3 border border-line rounded-[10px] cursor-pointer hover:border-ink bg-transparent text-ink disabled:text-muted disabled:cursor-not-allowed" disabled={!v.workflow.canApproveSupply} onClick={v.workflow.onApproveSupply}>APPROVE SUPPLY USDC</button>
           {v.canSupply && (
             <>
               <button className="[font-family:inherit] text-[13px] tracking-[0.18em] text-ink bg-transparent [background-image:linear-gradient(#3D3BF3,#3D3BF3)] [background-repeat:no-repeat] [background-size:0%_100%] border border-ink rounded-[10px] inline-flex items-center justify-center gap-2.5 py-4 px-5 cursor-pointer [transition:background-size_450ms_cubic-bezier(0.22,1,0.36,1),_color_450ms] hover:[background-size:100%_100%] hover:text-white hover:border-indigo active:[transform:translateY(1px)]" onClick={v.onSupply}>
@@ -70,6 +71,7 @@ export function LendPage() {
                 <button className="[font-family:inherit] text-[13px] tracking-[0.18em] text-muted bg-transparent border border-line rounded-[10px] py-4 px-5 cursor-not-allowed" disabled>
                   SUPPLY USDC
                 </button>
+                <span className="text-[10px] tracking-[0.16em] text-muted">{v.supplyReason}</span>
               </div>
             </>
           )}
@@ -137,7 +139,7 @@ export function LendPage() {
           <>
             <div className="flex justify-between gap-3 flex-wrap border-t border-t-line-soft pt-4 text-[13px] [animation:fadeIn_400ms]">
               <span className="tracking-[0.12em]">
-                REPAID FROM LOCKED CASH · MON 9:30 AM
+                REPAID FROM LOCKED CASH · ACCEPTED RECEIPTS
               </span>
               <span className="text-safe">
                 +{v.lend.recvFmt} USDC
@@ -146,11 +148,6 @@ export function LendPage() {
           </>
         )}
       </section>
-      {v.actionStatus && (
-        <div className="text-[11px] tracking-[0.16em] wrap-anywhere" style={{ color: v.actionStatusColor }}>
-          {v.actionStatus}{v.actionHash ? ' · ' : ''}{v.actionHash && v.actionExplorerUrl ? <a href={v.actionExplorerUrl} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{v.actionHash}</a> : v.actionHash}
-        </div>
-      )}
     </main>
   );
 }

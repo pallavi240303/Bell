@@ -57,10 +57,14 @@ export function BuyersPage() {
               USDC
             </span>
           </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[10px] tracking-[0.18em] text-muted">OFFER EXPIRY · UTC</span>
+            <input className="w-full [font-family:inherit] text-[12px] text-ink bg-transparent border border-line rounded-[10px] p-3" aria-label="Offer expiry (UTC)" type="datetime-local" step="1" value={v.workflow.offerExpiryInput} onChange={v.workflow.onOfferExpiry}/>
+          </label>
           <div className="flex flex-col text-[13px] border-t border-t-line-soft">
             <div className="flex justify-between py-2.5 px-0 border-b border-b-line-soft">
               <span className="text-muted">
-                USDC YOU LOCK
+                ESTIMATED USDC TO LOCK
               </span>
               <TickNumber value={v.fEscrowFmt} className="inline-block max-w-full wrap-anywhere" />
             </div>
@@ -72,6 +76,7 @@ export function BuyersPage() {
             </div>
           </div>
           <div className="flex flex-col gap-2">
+            <button className="[font-family:inherit] text-[11px] tracking-[0.14em] py-2.25 px-3 border border-line rounded-[10px] cursor-pointer hover:border-ink bg-transparent text-ink disabled:text-muted disabled:cursor-not-allowed" disabled={!v.workflow.canApproveOffer} onClick={v.workflow.onApproveOffer}>APPROVE OFFER CASH</button>
             {v.postOk && (
               <>
                 <button className="[font-family:inherit] text-[13px] tracking-[0.18em] text-ink bg-transparent [background-image:linear-gradient(#3D3BF3,#3D3BF3)] [background-repeat:no-repeat] [background-size:0%_100%] border border-ink rounded-[10px] inline-flex items-center justify-center gap-2.5 py-4 px-5 cursor-pointer [transition:background-size_450ms_cubic-bezier(0.22,1,0.36,1),_color_450ms] hover:[background-size:100%_100%] hover:text-white hover:border-indigo active:[transform:translateY(1px)]" onClick={v.onPost}>
@@ -84,6 +89,7 @@ export function BuyersPage() {
                 <button className="[font-family:inherit] text-[13px] tracking-[0.18em] text-muted bg-transparent border border-line rounded-[10px] py-4 px-5 cursor-not-allowed" disabled>
                   LOCK USDC · POST OFFER
                 </button>
+                <span className="text-[10px] tracking-[0.16em] text-muted">{v.postReason}</span>
               </>
             )}
             <ActorTools role="buyer" />
@@ -227,11 +233,6 @@ export function BuyersPage() {
           </>
         )}
       </section>
-      {v.actionStatus && (
-        <div className="text-[11px] tracking-[0.16em] wrap-anywhere" style={{ color: v.actionStatusColor }}>
-          {v.actionStatus}{v.actionHash ? ' · ' : ''}{v.actionHash && v.actionExplorerUrl ? <a href={v.actionExplorerUrl} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{v.actionHash}</a> : v.actionHash}
-        </div>
-      )}
     </main>
   );
 }

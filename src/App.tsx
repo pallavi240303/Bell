@@ -19,6 +19,11 @@ export default function App() {
     <div className="min-h-screen text-ink [font-family:'Geist_Mono',_ui-monospace,_monospace] tabular-nums">
       <AppEffects />
       <Header />
+      {v.actionStatus && (
+        <div role="status" aria-live="polite" className="max-w-380 my-0 mx-auto px-[clamp(16px,_3vw,_40px)] py-3 text-[11px] tracking-[0.16em] wrap-anywhere" style={{ color: v.actionStatusColor }}>
+          {v.actionStatus}{v.actionHash ? ' · ' : ''}{v.actionHash && v.actionExplorerUrl ? <a href={v.actionExplorerUrl} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{v.actionHash}</a> : v.actionHash}
+        </div>
+      )}
       <PageTransition />
       <div className="[transition:opacity_170ms_linear]" style={{ opacity: v.pageOpacity }}>
         {v.isHome && <HomePage />}
