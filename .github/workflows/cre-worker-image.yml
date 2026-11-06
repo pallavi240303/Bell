@@ -56,10 +56,16 @@ jobs:
       - name: Build workflow, run worker tests, build linux image
         run: docker build --platform linux/amd64 --file Dockerfile.worker --target runtime --tag bell-cre-worker:test .
       - name: Exercise image CRE workflow against owned Anvil and verify canonical acceptance
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository_owner == 'pallavi240303'
         env:
+          CRE_API_KEY: ${{ secrets.CRE_API_KEY }}
           BELL_WORKER_NATIVE_TEST: '1'
           BELL_TEST_CRE_IMAGE: bell-cre-worker:test
         run: |
+          if [ -z "$CRE_API_KEY" ]; then
+            echo 'Add repository Actions secret CRE_API_KEY to run the authenticated native acceptance test.'
+            exit 1
+          fi
           npm ci --ignore-scripts --no-audit --no-fund
           npm --prefix cre/bell-market-event ci --ignore-scripts --no-audit --no-fund
           forge build
