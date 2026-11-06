@@ -1,74 +1,62 @@
 # BELL market event workflow
 
-One CRE workflow accepts live or replay observations, validates them against Arc state, and submits a typed market-event report to the configured receiver. It does not calculate debt, exercise collateral, or settle loans. Those operations remain in the existing contracts.
+One CRE workflow validates market observations against pinned onchain state and sends schema1 reports to the configured receiver. All reports retain the same21-word /672-byte envelope. Debt, custody, cover and settlement remain in contracts.
 
-## Verification
+## Toolchain and verification
 
-Install Node 22+, Bun >=1.2.21, and the CRE CLI. The verified toolchain was SDK **1.23.0**, Bun **1.4.4**, CRE CLI **1.39.0**, and Javy **8.1.0**. The previously reported CLI 1.3.14 was not present in this environment. SDK and dependencies are isolated here; use `npm ci` with the checked-in package lock. Do not add the SDK to the root TypeScript project.
-
-From this directory:
+Pinned SDK1.23.0, viem2.38.5 and zod3.25.76 are isolated in this package. Verified tooling is Node22+, Bun1.3.14 (minimum1.2.21), CLI1.39.0 and Javy8.1.0. Use the checked-in package lock; no root SDK dependency is needed.
 
 ```sh
 npm ci
-npm run check:toolchain
 npm test
 npm run typecheck
 npm run build
 npm run test:integration
+npm run test:cli:local
 ```
 
-`npm test` runs Node behavior tests and the official SDK's Bun test runtime. The latter exercises HTTP consensus, EVM reads, report signing, and EVM Write with capability mocks. `npm run build` invokes the official SDK compiler and produces `dist/workflow.wasm`; it does not simulate or deploy. The integration test executes the shared workflow through a test-only FFI boundary, passes the bytes through the real `SimulationMarketEventReceiver`, and proves settlement rejects before a valid benchmark and succeeds afterward. It compares all bytes and the hash with Solidity `abi.encode` and rejects a duplicate nonce. Its configured test contract acts as the receiver's forwarder; no receiver binding or authority is bypassed.
+The unit suite includes one owned-Anvil deployment check. SDK tests use the genuine SDK runtime with capability mocks. Build produces `dist/workflow.wasm`; build success alone is neither simulation nor deployment. Solidity/FFI integration checks exact bytes through the actual simulation receiver/oracle, ordinary borrowing, a newer reference used for later cover and an independent reopening benchmark. No forwarder/receiver authorization is bypassed.
 
-The sanitized results are in `artifacts/verification.json`. They are local evidence, not evidence of an Arc deployment or successful CLI simulation.
+`test:cli:local` starts and owns a fresh loopback Anvil31337, verifies the existing four local-control gates, deploys the unmodified official CLI mock-forwarder artifact, and uses the SDK's native `anvil-devnet` selector7759470850252068959. Its temporary project supplies an explicit forwarder override; it does not impersonate Arc or weaken chain checks. The script uses only a deterministic inert local test account, funded on its owned node. Its temporary `.env` is deleted afterward; it never reads the owner's root `.env`, provider keys or deployer key. Production default CLI limits remain enabled. The proof separates a no-broadcast dry run from actual local CLI transactions, verifies `ReportProcessed`, `ReceiverReportAccepted` and `MarketEventAccepted`, and retains actual hashes and exact engine parity. Local script actors do not establish interactive wallet consent. The official fixture/license/provenance live in `fixtures/cli/`.
 
-## Inputs and authoritative state
+## Report kinds and authority
 
-`src/schema.ts` defines the common `ObservationBundle`. `fixtures/reopen.json` uses synthetic UTC epoch integers around 1000; it has no real calendar date, is consumed by tests, and intentionally expires under today's runtime clock. It is not a canned successful live response.
+Kinds remain scheduled1, close2, official reopening benchmark3, corporate action4, halt5, with ordinary MARKET_PRICE appended as6. The encoder and valid old1–5 golden bytes/hashes remain unchanged. `keccak256(payload)` is the oracle's report hash. Forwarder metadata is outside this payload.
 
-Live mode uses four configured **public HTTPS** endpoints. Each endpoint must return one normalized, immutable JSON observation:
+MARKET_PRICE is an asset-level report: outer bundle/report.sessionId is zero. Its calendar must independently retain inner assetId/sessionId/configHash identifying the active scheduled session. Both price observations name that same active session. The active oracle schedule is authoritative even when configured `sessionId` selects a different historical target; kinds1–3 retain their configured target semantics.
 
-- Calendar: `kind`, `assetId`, `sessionId`, `configHash`, `observedAt`, `validUntil`, `status`, `scheduledOpen`, `scheduledClose`, `scheduledReopen`.
-- Primary benchmark: `assetId`, `sessionId`, `observedAt`, `price` (integer cash units per share, matching the contract).
-- Secondary benchmark: `assetId`, `sessionId`, `observedAt`, `price`, `corroborated` (explicit independent confirmation for an extreme move).
-- Corporate action: `assetId`, `observedAt`, `action`, `actionId`, `multiplierNumerator`, `multiplierDenominator` (cumulative multiplier, not an inferred per-event ratio).
+Ordinary price acceptance requires an effective exact config, nonhalted asset, active SCHEDULED session, and both current execution and source observations in `[scheduledOpen,scheduledClose)`. Both price sources must be fresh, nonfuture, positive and within uint96, with different configured provider IDs, normalized HTTPS origins and raw-response hashes, plus configured price agreement. The primary's actual timestamp becomes report.observedAt, strictly newer than the stored reference. Both price observations must not precede the latest corporate action. Validity is inclusive at execution and cannot exceed observedAt+1800; freshness cannot exceed1800 even if configuration is looser.
 
-All integer amounts/timestamps are unsigned decimal strings. `kind` uses the Solidity enum: scheduled=1, close=2, reopen=3, corporate action=4, halt=5. Status is `SCHEDULED`, `OPEN`, `CLOSED`, or `HALTED`. Corporate actions are none=0, split=1, reverse split=2; other actions cannot be submitted. Asset-level reports use a zero session ID. Schedule open/close must match the oracle facts; the calendar supplies the official later reopen time. The oracle does not expose a separate scheduled-reopen timestamp, so this calendar field remains an external evidence requirement.
+Corporate evidence must match the accepted current action/hash and cumulative multiplier, or NONE/zero action ID and1/1 before any action. Accepted monetary multiplier components are1..uint64.max; the wire fields remain uint128. A true halt invalidates the old reference permanently until another qualifying newer report; unhalt does not revive it. Repayment and collateral addition availability remains contract policy, independent of this producer.
 
-Live observations derive provider IDs and URLs from configuration and hashes from the actual response bytes; response-supplied identity/hash claims cannot override them. HTTP requests use identical-response consensus, a five-second timeout, and a 32 KiB response cap. Providers therefore need stable responses for the selected event. Reopen always requires different configured provider IDs, URL origins, response hashes, fresh observations at or after reopen, and configured price agreement. Moves strictly greater than the configured extreme threshold also require the secondary's explicit corroboration. Configuration identifies independent providers; operators must verify they are independent upstream sources.
+`latestReference` is inspectable historical storage, not by itself authority for a loan. Contract consumers use `requireFreshReference`. A MARKET_PRICE changes neither session phase nor benchmark storage. There is no `ReferenceAccepted` event: acceptance is proven by existing `MarketEventAccepted(kind6,asset,session0,nonce,reportHash)`, the full stored reference and canonical asset/schedule state. A successful forwarder transaction alone is insufficient.
 
-Replay replaces only the input adapter with `config.replay`, an object using exactly the same bundle schema. It uses the same runtime clock, Arc reads, validation, encoding, and submission. Both modes read the receiver's oracle/forwarder, the oracle's bound receiver, asset nonce/hash/config/active session, session facts, finalized benchmarks, latest corporate action, and registry configuration. Each snapshot pins all calls to one finalized block. Chain ID/name/selector must agree with the SDK's capability network registry. Live mode also checks receiver workflow ID and owner.
+The older `referenceSessionId` lookup remains a **different finalized official benchmark**, used only for kind3 extreme-move policy. It is never a fallback ordinary reference. A first ordinary loan can bootstrap from two qualifying current sources without a historical benchmark; kind3 still requires its separately configured finalized historical reference.
 
-`referenceSessionId` must identify a different finalized benchmark for the same asset. Missing reference data fails closed. **First-session bootstrap remains a deployment decision:** these finalized contracts expose no standalone reference-price getter, so this package does not invent a reference or silently take an unbound offchain value. The local settlement proof uses a synthetic reference matching its fixture's receipt; the SDK reader test separately proves reference-session reads. A real first-session run requires an approved reference-bootstrap procedure.
+## Sources and current quotes
 
-Benchmark responses must explicitly identify the same asset/session as the calendar bundle and Arc state; corporate evidence must explicitly identify that asset. Adapters preserve those claims and never fill them from calendar identity. An OPEN calendar observation must itself occur at or after both the scheduled reopen and the stored close observation; a fresh price does not renew an earlier OPEN status.
+All normalized integer amounts/timestamps are canonical unsigned decimal strings. Configured normalized endpoints are public credential-free HTTPS DNS URLs; credentials, query/fragment ambiguity and numeric/IP origin aliases reject. Response-provided provider ID/URL/hash cannot override configured identity or the digest of actual response bytes. A source cannot be treated as independent merely because its URL spelling differs.
 
-## Report, retry, and logs
+Normalized calendar responses include kind, assetId, sessionId, configHash, observedAt, validUntil, status, scheduledOpen/Close/Reopen. Primary/secondary responses name assetId/sessionId and actual observedAt/price; kind3 can additionally require explicit secondary extreme-move corroboration. Corporate responses name assetId, actual as-of observedAt, action/actionId and cumulative multiplier. Kind6 fetches both prices and current corporate/calendar facts. Missing or conflicting identities reject; they are not filled from another provider.
 
-The payload is exactly `Types.MarketEventReport`: 21 static ABI words / 672 bytes, in the order declared in `contracts/src/lib/Types.sol`. `keccak256(payload)` is the oracle report hash. Forwarder metadata and report IDs are not appended to this payload. Submission uses only `runtime.report` and `EVMClient.writeReport` to the configured mode-specific receiver; there is no generic call target or wallet transaction code. `submitted` requires both transaction success and explicit receiver-execution success. A receiver revert returns `reverted`; absent receiver confirmation returns `unknown`, retaining any transaction hash without claiming acceptance or retrying the write.
+The checked-in example URLs remain **unconfigured examples**. This stage does not establish production calendar/corporate endpoints, economic independence of upstream vendors, a successful live feed or an official historical reopening auction. Replay fixtures are explicit supplied observations, including synthetic times; stale fixtures reject under a real clock.
 
-Configuration hashing is `keccak256(UTF8(canonicalJSON(parsedConfig)))`: recursively sort object keys lexicographically, preserve array order, retain decimal/hex strings, and omit whitespace. The workflow config hash is observability evidence; it is distinct from the onchain registry `configHash`, which is never replaced by it.
+`dataSource: "quote-snapshot"` uses exact current NVDA quotes from fixed Finnhub and Twelve Data endpoints. Numeric lexemes convert to6-decimal integer units without floating point arithmetic. Finnhub `t` and Twelve Data `timestamp` remain actual provider timestamps; no runtime/calendar time substitution occurs. Stale or future quotes reject, including last-trade quotes over a closure.
 
-Read retries are immediate, deterministic, and capped at three. The next configured cron invocation supplies the delay between executions. After fetching observations, the workflow rereads Arc state and reruns validation. An advanced nonce/hash or finalized fact prevents submission. Each execution attempts at most one write. An ambiguous result is `unknown`, with no automatic write retry. A later invocation consults chain state again; the receiver's nonce/hash checks remain the final duplicate guard even if finalized reads lag a pending transaction.
+Live kind6 may use current quotes only with actual current public calendar/corporate facts from the configured reader; it has no replay fallback. Quote binding must name the independently checked active session. Quote APIs do not emit BELL session hashes: their binding comes from the fixed NVDA request plus actual observation time inside the authenticated calendar. Current quotes are ordinary reference evidence, never official historical reopening proof. Existing kind3 current-quote snapshots remain explicitly replay/simulation-only; live kind3 rejects before credentials are requested.
 
-Logs contain only mode, config/report hashes, nonce/state hashes, source hashes, fixed decision codes, and transaction result/hash. Raw response bodies, provider URLs, request headers, exceptions, credentials, and private fixture data are not logged.
+Secret IDs are fixed to `FINNHUB_API_KEY` and `TWELVEDATA_API_KEY`. Credentials enter only the official fixed quote request plans: Finnhub header `X-Finnhub-Token`, Twelve Data `apikey`. The code rejects non200 responses, including redirects. Keep real values only in the owner's ignored `.env` and approved secrets mappings; no value belongs in tracked JSON or evidence. This stage uses inert SDK fixtures and local CLI keys only, with no genuine provider request claim.
 
-## Running the official CLI
+## Canonical reads, resources and errors
 
-`config.example.json` deliberately contains invalid zero deployment identities and example domains. Copy its shape to ignored `config.live.json` or `config.replay.json`, populate verified deployment/workflow/source identities, and set `mode` to match the target. For replay, add a valid `replay` bundle for the actual runtime time and oracle session. `project.yaml` supplies public Arc RPC configuration; confirm actual capability/forwarder availability for the deployment. Example selectors alone do not prove deployment access.
+`marketSnapshot(assetId,sessionId,referenceSessionId)` is a bounded read-only66-word /2112-byte aggregate of normalized asset state, target/active sessions, target/reference benchmarks, corporate fact and ordinary reference. It preserves the assetState default nonce1 and all standalone getter semantics, including inspectable expired/invalidated facts. It does no financial computation or state mutation. CRE retains dedicated raw assetState reads, all receiver/oracle/forwarder/workflow identity pins, registry identity and one finalized-block pin for the first snapshot.
 
-From this directory, after the owner has authenticated the CRE CLI and prepared real configuration:
+Before submission a second finalized header/assetState read must preserve nonce/hash and byte-identical raw asset state. Advancement produces a no-write result; inconsistency fails closed. Facts are cached only within the invocation. Time/decision validation runs again immediately before one submission.
 
-```sh
-cre workflow simulate . --project-root . --target replay-settings --non-interactive --trigger-index 0
-```
+Fully populated successful paths use11 chain reads live /9 replay, including both headers and the final raw guard. Live kind6 uses4 HTTP requests and5 consensus calls including report signing; replay fixtures use no HTTP and1 consensus. Quote snapshots additionally need2 secret requests; successful secrets are cached only for that invocation. Cumulative before-dispatch counters prevent retries exceeding default15 chain reads,15 HTTP,50 consensus or5 secrets. There is at most one write. The aggregate is composed from small ABI tuples to avoid Javy recursion at subscription.
 
-Use `live-settings` for live inputs. Do not add `--broadcast` for a read-only simulation attempt. No deployments or broadcasts were performed here. The actual CLI attempt stopped before execution with `Authentication required: not logged in and no CRE_API_KEY set`. Owner login, deployment/source configuration, reference bootstrap, and the subsequent authenticated run remain external gates for Task 15. Never paste credentials into chat or tracked config.
+HTTP observation size is checked using the SDK's actual protobuf consensus encoding, with headroom below25kb, including escaped/multibyte input. This workflow-boundary cap does not arbitrarily shrink the independent32KiB quote parser. Request encoding also remains below120kb. Raw capability failures are converted to fixed codes before consensus/logging. No resource limit is raised.
 
-Authenticated provider transport is deliberately unsupported. Automatic approval review rejected adding secret-to-endpoint Bearer transport because the destinations were not authorized for those credentials. The implemented schema rejects credential configuration and credential-bearing/query URLs. Authorizing concrete provider destinations is required before a future authenticated adapter is added.
+`submitted` requires both transaction success and explicit receiver execution success. Receiver reverts return `reverted`; missing confirmation returns `unknown`. Ambiguous writes are never retried. Logs expose only finite codes, mode/source labels, hashes, nonce and permitted transaction evidence. Do not use `--verbose` or `--engine-logs` with provider credentials: underlying CLI logs may contain authenticated requests.
 
-## Official references
-
-- [SDK 1.23.0 package](https://www.npmjs.com/package/@chainlink/cre-sdk/v/1.23.0) and [SDK source](https://github.com/smartcontractkit/cre-sdk-typescript)
-- [CRE HTTP capability](https://docs.chain.link/cre/reference/sdk/http-client-ts), [EVM capability](https://docs.chain.link/cre/reference/sdk/evm-client-ts), and [runtime clock/report APIs](https://docs.chain.link/cre/reference/sdk/core-ts)
-- [Project/workflow configuration](https://docs.chain.link/cre/reference/project-configuration-ts) and [official CLI installation](https://docs.chain.link/cre/getting-started/cli-installation/macos-linux)
-- [CRE CLI v1.39.0 release](https://github.com/smartcontractkit/cre-cli/releases/tag/v1.39.0)
+Public corrected-Arc evidence and any production DON deployment remain separate gates. CLI simulation/local broadcast is not a production DON claim.

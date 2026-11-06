@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "build": "bun node_modules/@chainlink/cre-sdk/bin/cre-compile.ts src/main.ts dist/workflow.wasm",
     "test:integration": "node --import tsx scripts/integration.ts",
-    "check:toolchain": "node scripts/toolchain.mjs"
+    "check:toolchain": "node scripts/toolchain.mjs",
+    "test:cli:local": "node --import tsx scripts/local-cli.ts"
   },
   "dependencies": {
     "@chainlink/cre-sdk": "1.23.0",
@@ -22,5 +23,8 @@
     "tsx": "4.23.15",
     "typescript": "5.9.3"
   },
-  "engines": { "bun": ">=1.2.21", "node": ">=22" }
+  "engines": {
+    "bun": ">=1.2.21",
+    "node": ">=22"
+  }
 }

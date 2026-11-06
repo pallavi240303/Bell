@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/smartcontractkit/cre-cli",
+  "tag": "v1.39.0",
+  "commit": "8f029837c9e520a3d55d715b734130f6a1c2b3f8",
+  "path": "test/MockKeystoneForwarder.json",
+  "sha256": "f7100873976bfbdc5e182cffea2c3ba65c2f2a489407e383596934328d3d2c6f",
+  "usage": "Official unmodified local-only test artifact; constructor deployment, no production authority claim."
+}
