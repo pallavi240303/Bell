@@ -1,3 +1,4 @@
+import {discoverFinalized} from './discovery.ts';
 import {decodeEventLog} from 'viem';
 import {artifact,contracts} from './abi.ts';
 import {raw,integers,type Header} from './types.ts';
@@ -13,13 +14,14 @@ async function headers(numbers:bigint[],read:(number:bigint)=>Promise<Header>):P
 }
 export class Indexer {
   private running:Promise<void>|undefined;
-  constructor(readonly store:Store,readonly rpc:any,readonly refresh:(block:Header,logs:any[],history:StoredBlock[])=>Promise<any>){}
+  constructor(readonly store:Store,readonly rpc:any,readonly refresh:(block:Header,logs:any[],history:StoredBlock[])=>Promise<any>,readonly options?:{discovery?:'finalized'}){}
   /** Concurrent UI/API readers share one writer and receive the same success or failure. */
   sync():Promise<void>{
     if(!this.running)this.running=this.catchUp().finally(()=>{this.running=undefined;});
     return this.running;
   }
   private async catchUp(){
+    if(this.options?.discovery==='finalized')return discoverFinalized(this.store,this.rpc,this.refresh);
     const head:bigint=await this.rpc.getBlockNumber();let blocks=this.store.data.blocks.slice();
     while(blocks.length){const last=blocks.at(-1)!;const n=BigInt(last.header.number);if(n<=head){const canonical=await this.rpc.getBlock({blockNumber:n});if(canonical?.hash===last.header.hash)break;}blocks.pop();}
     if(blocks.length!==this.store.data.blocks.length)this.store.replace(blocks);

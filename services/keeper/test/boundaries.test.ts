@@ -89,3 +89,19 @@ test('settlement uses chain deadline, terminal precedence, accepted identity and
 test('missing generated artifacts fail clearly', async () => {
   const {artifact}=await module('abi');assert.throws(()=>artifact('NotAContract'),/forge build|artifact/i);
 });
+
+// Catches accidentally widening the actor lane or skipping/doubling deployment verification.
+test('exact permissionless settlement envelope delegates once and rejects actor or arbitrary fields',async()=>{
+ const {prepareActor}=await module('transactions'),{artifact}=await module('abi');
+ const source={number:12n,hash:hash(12),timestamp:99n},checked={...deployment,codeHashes:Object.fromEntries(Object.keys(deployment.addresses).map(k=>[k,keccak256('0x6000')]))};
+ let identities=0;const rpc={readContract:async(args:any)=>wiring(args),getChainId:async()=>{identities++;return 5042002;},getBlock:async()=>source,getCode:async()=> '0x6000'};
+ const base={chainId:'5042002',from:address(20),settlement:'settle',receiptId:'9007199254740993'};
+ for(const settlement of ['settle','terminalSettle']){
+  identities=0;const tx=await prepareActor(checked,source,{...base,settlement},rpc);
+  assert.equal(identities,1);assert.equal(tx.to,checked.addresses.manager);assert.equal(tx.from,base.from);assert.equal(tx.value,'0');assert.equal(tx.sourceBlock,'12');assert.equal(tx.sourceBlockHash,source.hash);
+  const call=decodeFunctionData({abi:artifact('CoverManager').abi,data:tx.data});assert.equal(call.functionName,settlement);assert.deepEqual(call.args,[9007199254740993n]);
+ }
+ for(const extra of [{amount:'1'},{recipient:address(9)},{contract:'manager'},{method:'settle'},{args:['1']},{value:'0'},{to:address(4)},{settlement:'withdrawClaim'},{settlement:undefined},{receiptId:'01'},{receiptId:1},{receiptId:(2n**256n).toString()},{chainId:'31337'},{from:'0x12'}])await assert.rejects(()=>prepareActor(checked,source,{...base,...extra},rpc));
+ for(const method of ['settle','terminalSettle'])await assert.rejects(()=>prepareActor(checked,source,{chainId:checked.chainId,from:base.from,contract:'manager',method,args:['1']},rpc),/actor method/);
+ await assert.rejects(()=>prepareActor(checked,source,base,{...rpc,getCode:async()=> '0x6001'}),/code mismatch/);
+});

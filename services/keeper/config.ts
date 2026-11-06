@@ -27,7 +27,9 @@ function rpcQueue(){
   }
   return (run:()=>Promise<any>,method:string,signal?:AbortSignal)=>new Promise<any>((resolve,reject)=>{
     if(signal?.aborted){reject(abortError());return;}
-    const cost=['eth_chainId','eth_blockNumber','eth_getBlockByNumber','eth_getCode'].includes(method)?1:4;
+    // Public Arc log discovery needs one full completion-based cooldown per
+    // attempt, including retries; it still shares this FIFO with all other RPCs.
+    const cost=method==='eth_getLogs'?24:['eth_chainId','eth_blockNumber','eth_getBlockByNumber','eth_getCode'].includes(method)?1:4;
     const job:Job={cost,run,resolve,reject,signal,cancelled:false,cleanup:()=>signal?.removeEventListener('abort',cancel)};
     const cancel=()=>{job.cancelled=true;reject(abortError());};signal?.addEventListener('abort',cancel,{once:true});queue.push(job);
     if(!running){running=true;setTimeout(()=>{void drain();},2);}

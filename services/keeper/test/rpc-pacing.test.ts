@@ -27,3 +27,26 @@ test('mixed cheap and unknown RPC attempts obey a weighted server budget while c
  const proxy=await server((body,res)=>{const calls=Array.isArray(body)?body:[body],now=Date.now(),used=observed.filter(x=>now-x.time<950).reduce((sum,x)=>sum+x.cost,0);const weighted=calls.map(r=>({time:now,cost:['eth_chainId','eth_blockNumber','eth_getBlockByNumber','eth_getCode'].includes(r.method)?1:4,method:r.method}));if(used+weighted.reduce((sum,x)=>sum+x.cost,0)>24)rejected++;observed.push(...weighted);if(rejected){res.statusCode=429;res.setHeader('Retry-After','1');res.end(JSON.stringify(calls.map(r=>({jsonrpc:'2.0',id:r.id,error:{code:-32005,message:'weighted rate limit exceeded'}}))));return;}res.end(JSON.stringify(results(calls)));});
  try{const client=clientFor(proxy.url),requests=[...Array.from({length:24},(_,i)=>({method:'eth_getCode',params:[address(i+1),'latest']})),...Array.from({length:7},(_,i)=>({method:'unrecognized_read',params:[address(i+25)]})),...Array.from({length:6},(_,i)=>({method:'eth_getBalance',params:[address(i+32),'latest']}))];await Promise.all(requests.map(r=>client.request(r as any)));assert.equal(rejected,0,'unknown methods consume conservative heavy cost');const cheap=observed.filter(x=>x.method==='eth_getCode');assert.ok(cheap.some(start=>cheap.filter(x=>x.time>=start.time&&x.time-start.time<950).length>6),'cheap header/code catch-up is no longer throttled to six calls');}finally{await proxy.close();}
 });
+
+test('log discovery attempts and retries have a full cooldown in the shared RPC queue',async()=>{
+ const logArrivals:number[]=[],seen:string[]=[];let initialFailure=true,tooSoon=0;
+ const proxy=await server((body,res)=>{
+  const calls=Array.isArray(body)?body:[body],now=Date.now();
+  const replies=calls.map(r=>{
+   seen.push(r.method);
+   if(r.method!=='eth_getLogs')return {jsonrpc:'2.0',id:r.id,result:'0x1'};
+   if(logArrivals.length&&now-logArrivals.at(-1)!<950)tooSoon++;logArrivals.push(now);
+   if(initialFailure){initialFailure=false;return {jsonrpc:'2.0',id:r.id,error:{code:-32005,message:'rate limit exceeded'}};}
+   return {jsonrpc:'2.0',id:r.id,result:[]};
+  });
+  res.end(JSON.stringify(Array.isArray(body)?replies:replies[0]));
+ });
+ try{
+  const client=clientFor(proxy.url),filter={fromBlock:'0x1',toBlock:'0x800'} as const;
+  const first=client.request({method:'eth_getLogs',params:[filter]},{retryCount:1,retryDelay:0});
+  const cheap=client.request({method:'eth_blockNumber'});
+  const other=client.request({method:'eth_getLogs',params:[filter]},{retryCount:0});
+  const results=await Promise.all([first,cheap,other]);assert.deepEqual(results,[[],'0x1',[]]);
+  assert.equal(logArrivals.length,3,'retry uses the same transport queue');assert.equal(tooSoon,0,'every log attempt waits for the preceding attempt cooldown');assert.ok(seen.includes('eth_blockNumber'));
+ }finally{await proxy.close();}
+});

@@ -6,6 +6,13 @@ const allowed:Record<string,string[]>={pool:['deposit','redeem'],book:['postOffe
 const approvals:Record<string,[string,string]>={deposit:['cash','pool'],offer:['cash','book'],premium:['cash','book'],repay:['cash','loanManager'],collateral:['stock','vault'],backing:['stock','vault']};
 export interface Unsigned {chainId:string;from:Address;to:Address;data:Hex;value:'0';sourceBlock:string;sourceBlockHash:Hex}
 export async function prepareActor(d:Deployment,source:Header,input:Record<string,any>,client:any):Promise<Unsigned> {
+  if(Object.hasOwn(input,'settlement')){
+    exactKeys(input,['chainId','from','settlement','receiptId']);
+    if(input.chainId!==d.chainId)throw Error('deployment chain mismatch');rawUint(input.chainId);
+    if(typeof input.from!=='string'||!/^0x[0-9a-fA-F]{40}$/.test(input.from))throw Error('explicit caller required');
+    if(input.settlement!=='settle'&&input.settlement!=='terminalSettle')throw Error('permissionless method not allowed');
+    return prepareSettlement(d,source,input.from.toLowerCase() as Address,rawUint(input.receiptId),input.settlement,client);
+  }
   await verifyDeployment(client,d,source);
   const approval=input.approval!==undefined;
   exactKeys(input,approval?['chainId','from','approval','amount']:['chainId','from','contract','method','args']);

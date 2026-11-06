@@ -73,7 +73,7 @@ export function decodeEvidence(value:any):Evidence{
 export class Transport{
   constructor(private base='/api',private fetcher:typeof fetch=fetch){}
   private async request(path:string,input?:unknown){
-    const response=await this.fetcher.call(globalThis,`${this.base}${path}`,{method:input===undefined?'GET':'POST',headers:{'Content-Type':'application/json'},cache:'no-store',credentials:'omit',...(input===undefined?{}:{body:json(input)})});
+    const response=await this.fetcher.call(globalThis,`${this.base}${path}`,{method:input===undefined?'GET':'POST',headers:{'Content-Type':'application/json'},cache:'no-store',credentials:'same-origin',...(input===undefined?{}:{body:json(input)})});
     if(!response.ok)throw Error(`Read/preparation failed (${response.status}); refresh required`);return response.json();
   }
   async state(account?:string){return decodeFrame(await this.request(`/state${account?`?watch=${encodeURIComponent(account)}`:''}`));}

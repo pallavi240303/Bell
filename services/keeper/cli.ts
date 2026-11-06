@@ -15,7 +15,7 @@ if(process.argv[2]==='replay'){
   const store=new Store('services/keeper/runs/index.json',deployment);
   // Persist discovery provenance per block; indexedState reads financial facts once
   // at the final pinned canonical boundary, including empty-block debt accrual.
-  const index=new Indexer(store,client,async(_block,logs)=>({discoveryOnly:true,logCount:logs.length}));
+  const index=new Indexer(store,client,async(_block,logs)=>({discoveryOnly:true,logCount:logs.length}),deployment.chainId==='5042002'?{discovery:'finalized'}:undefined);
   const pending=new Map<string,Promise<Awaited<ReturnType<typeof indexedState>>>>();
   const refresh=(watch:Hex[]=[])=>{
     const normalized=[...new Set(watch.map(address=>address.toLowerCase() as Hex))].sort(),key=normalized.join(',');
