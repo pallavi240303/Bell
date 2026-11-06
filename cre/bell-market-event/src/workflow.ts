@@ -1,4 +1,5 @@
 import { HTTPClient, EVMClient, consensusIdenticalAggregation, getNetwork, encodeCallMsg, bytesToHex, hexToBase64, LAST_FINALIZED_BLOCK_NUMBER, blockNumber, protoBigIntToBigint, TxStatus, type Runtime } from '@chainlink/cre-sdk';
+import { EVM_PB } from '@chainlink/cre-sdk/pb';
 import { encodeFunctionData, decodeFunctionResult, zeroAddress, type Abi } from 'viem';
 import { execute, validateConfig, type RunResult } from './core.ts';
 import { observeLive, observeReplay, readArcState } from './adapters.ts';
@@ -39,7 +40,13 @@ export function runWorkflow(runtime: Runtime<Config>): RunResult {
             submit: (receiver, payload) => {
                 const report = runtime.report({ encodedPayload: hexToBase64(payload), encoderName: 'evm', signingAlgo: 'ecdsa', hashingAlgo: 'keccak256' }).result();
                 const result = evm.writeReport(runtime, { receiver, report, gasConfig: { gasLimit: c.gasLimit } }).result();
-                return { status: result.txStatus === TxStatus.SUCCESS ? 'success' : result.txStatus === TxStatus.REVERTED ? 'reverted' : 'fatal', ...(result.txHash?.length ? { txHash: bytesToHex(result.txHash) } : {}) };
+                const receiverStatus = result.receiverContractExecutionStatus;
+                const status = result.txStatus === TxStatus.REVERTED ? 'reverted'
+                    : result.txStatus !== TxStatus.SUCCESS ? 'fatal'
+                    : receiverStatus === EVM_PB.ReceiverContractExecutionStatus.REVERTED ? 'reverted'
+                    : receiverStatus === EVM_PB.ReceiverContractExecutionStatus.SUCCESS ? 'success'
+                    : 'unknown';
+                return { status, ...(result.txHash?.length ? { txHash: bytesToHex(result.txHash) } : {}) };
             },
         });
     }

@@ -7,7 +7,7 @@ if (!price)
     throw new Error('FFI_ARGUMENTS');
 const f = fixture();
 const config = { ...f.config, chainId, oracle, simulationReceiver: receiver, simulationForwarder: forwarder, registry, assetId, sessionId };
-const bundle = { ...f.bundle, assetId, sessionId, configHash, calendar: { ...f.bundle.calendar, observedAt: now, validUntil: (BigInt(now!) + 100n).toString(), scheduledOpen: '1200', scheduledClose: '1500', scheduledReopen: '1501' }, primary: { ...f.bundle.primary, observedAt: now, price }, secondary: { ...f.bundle.secondary, observedAt: now, price }, corporate: { ...f.bundle.corporate, observedAt: now } };
+const bundle = { ...f.bundle, assetId, sessionId, configHash, calendar: { ...f.bundle.calendar, observedAt: now, validUntil: (BigInt(now!) + 100n).toString(), scheduledOpen: '1200', scheduledClose: '1500', scheduledReopen: '1501' }, primary: { ...f.bundle.primary, assetId, sessionId, observedAt: now, price }, secondary: { ...f.bundle.secondary, assetId, sessionId, observedAt: now, price }, corporate: { ...f.bundle.corporate, assetId, observedAt: now } };
 const state = { ...f.state, chainId, oracle, receiver, forwarder, assetId, registryConfigHash: configHash, configEffectiveAt: '1001', nextNonce: nonce, stateHash, configHash, activeSessionId: sessionId, referencePrice: '100000000', session: { ...f.state.session, assetId, configHash, scheduledOpen: '1200', scheduledClose: '1500', closeObservedAt: '1500' } };
 let payload = '';
 const result = execute(config, { now: () => BigInt(now!), readState: () => state, observe: () => bundle, submit: (_target, bytes) => { payload = bytes; return { status: 'success' }; }, log: () => { } });

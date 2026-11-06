@@ -3,6 +3,40 @@ import test from 'node:test';
 import { decodeAbiParameters, keccak256, parseAbiParameters, zeroHash } from 'viem';
 import { decide, encodeReport, configurationHash, execute } from '../src/core.ts';
 import { fixture, hash, address } from './fixtures.ts';
+
+for (const [source, field] of [['primary', 'assetId'], ['primary', 'sessionId'], ['secondary', 'assetId'], ['secondary', 'sessionId'], ['corporate', 'assetId']] as const) {
+    for (const mismatch of ['missing', 'conflicting']) test(`core rejects ${mismatch} ${source} ${field}`, () => {
+        const f = fixture();
+        if (mismatch === 'missing') delete (f.bundle[source] as any)[field];
+        else (f.bundle[source] as any)[field] = hash('wrong-evidence-identity');
+        assert.equal(decide(f.config, f.bundle, f.state, f.now).status, 'reject');
+    });
+}
+test('asset-level corporate action evidence cannot name another asset', () => {
+    const f = fixture();
+    f.bundle.kind = 4; f.bundle.sessionId = zeroHash;
+    f.bundle.corporate.action = 1; f.bundle.corporate.actionId = hash('split');
+    f.bundle.corporate.multiplierNumerator = '10';
+    f.bundle.corporate.assetId = hash('other-asset');
+    assert.equal(decide(f.config, f.bundle, f.state, f.now).status, 'reject');
+});
+
+for (const mode of ['live', 'replay']) {
+    for (const timing of [
+        { name: 'pre-close OPEN observation', observedAt: '899', reopen: '1000', closeObservedAt: '900', expected: 'reject' },
+        { name: 'one second before scheduled reopen', observedAt: '999', reopen: '1000', closeObservedAt: '900', expected: 'reject' },
+        { name: 'exact scheduled reopen boundary', observedAt: '1000', reopen: '1000', closeObservedAt: '900', expected: 'submit' },
+        { name: 'one second before delayed close confirmation', observedAt: '999', reopen: '950', closeObservedAt: '1000', expected: 'reject' },
+        { name: 'exact delayed close confirmation boundary', observedAt: '1000', reopen: '950', closeObservedAt: '1000', expected: 'submit' },
+    ]) test(`${mode} OPEN status timing: ${timing.name}`, () => {
+        const f = fixture();
+        const config = { ...f.config, mode };
+        const state = { ...f.state, receiver: mode === 'live' ? config.liveReceiver : config.simulationReceiver, forwarder: mode === 'live' ? config.liveForwarder : config.simulationForwarder, session: { ...f.state.session, closeObservedAt: timing.closeObservedAt } };
+        f.bundle.calendar.observedAt = timing.observedAt;
+        f.bundle.calendar.scheduledReopen = timing.reopen;
+        assert.equal(decide(config, f.bundle, state, f.now).status, timing.expected);
+    });
+}
 test('valid reopen produces the exact 21-word Solidity payload with Arc identity', () => {
     const f = fixture();
     const d = decide(f.config, f.bundle, f.state, f.now);

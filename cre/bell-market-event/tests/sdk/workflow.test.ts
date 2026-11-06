@@ -5,7 +5,11 @@ import { zeroHash } from 'viem';
 import { fixture, hash } from '../fixtures.ts';
 import { readAbi } from '../../src/abi.ts';
 import { runWorkflow } from '../../src/workflow.ts';
-test('real CRE SDK capabilities read Arc, reach HTTP consensus, sign and submit exact payload in both modes', () => {
+for (const outcome of [
+    { name: 'confirmed receiver acceptance', receiverStatus: 'RECEIVER_CONTRACT_EXECUTION_STATUS_SUCCESS', expected: 'submitted' },
+    { name: 'successful transaction with reverted receiver', receiverStatus: 'RECEIVER_CONTRACT_EXECUTION_STATUS_REVERTED', expected: 'reverted' },
+    { name: 'successful transaction without receiver confirmation', receiverStatus: undefined, expected: 'unknown' },
+] as const) test(`real CRE capabilities: ${outcome.name} in both modes without write retry`, () => {
     const f = fixture();
     const network = getNetwork({ chainFamily: 'evm', chainSelectorName: 'arc-testnet', isTestnet: true })!;
     const evm = EvmMock.testInstance(network.chainSelector.selector);
@@ -32,14 +36,17 @@ test('real CRE SDK capabilities read Arc, reach HTTP consensus, sign and submit 
         receiver.forwarder = () => mode === 'live' ? f.config.liveForwarder : f.config.simulationForwarder;
         receiver.workflowId = () => f.config.workflowId;
         receiver.workflowOwner = () => f.config.workflowOwner;
-        receiver.writeReport = (req) => { targets.push(bytesToHex(req.receiver)); payloads.push(bytesToHex(req.report.rawReport.slice(-672))); return { txStatus: 'TX_STATUS_SUCCESS', txHash: Buffer.from(hash('tx').slice(2), 'hex').toString('base64') }; };
+        receiver.writeReport = (req) => { targets.push(bytesToHex(req.receiver)); payloads.push(bytesToHex(req.report.rawReport.slice(-672))); return { txStatus: 'TX_STATUS_SUCCESS', ...(outcome.receiverStatus ? { receiverContractExecutionStatus: outcome.receiverStatus } : {}), txHash: Buffer.from(hash('tx').slice(2), 'hex').toString('base64') }; };
         const config = { ...f.config, mode, chainName: network.chainSelector.name, chainSelector: network.chainSelector.selector.toString(), chainId: network.chainId };
         // Replay is the exact canonical observation bundle produced by the live adapter.
         const { observeLive } = requireAdapter();
         const replay = observeLive(config, (key: string) => JSON.stringify(bodies[key]));
         const runtime = newTestRuntime(null, { timeProvider: () => 1000000 }, { ...config, replay });
         const result = runWorkflow(runtime);
-        assert.equal(result?.status, 'submitted');
+        assert.equal(result?.status, outcome.expected);
+        assert.equal(result.txHash, hash('tx'));
+        assert.equal(JSON.parse(runtime.getLogs().at(-1)!).status, outcome.expected);
+        if (outcome.expected !== 'submitted') assert.ok(runtime.getLogs().every(l => !l.includes('submitted')));
         assert.ok(runtime.getLogs().every(l => !l.includes('https:') && !l.includes('Authorization')));
     }
     assert.equal(calls.length, 4);

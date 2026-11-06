@@ -6,7 +6,7 @@
   "wasmBuild": "passed using official cre-compile and Javy 8.1.0",
   "sdkCapabilityTest": {
     "command": "npm run test:sdk",
-    "passed": 1,
+    "passed": 3,
     "httpConsensus": true,
     "evmRead": true,
     "reportAndEvmWrite": true,

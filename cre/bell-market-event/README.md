@@ -28,9 +28,9 @@ The sanitized results are in `artifacts/verification.json`. They are local evide
 Live mode uses four configured **public HTTPS** endpoints. Each endpoint must return one normalized, immutable JSON observation:
 
 - Calendar: `kind`, `assetId`, `sessionId`, `configHash`, `observedAt`, `validUntil`, `status`, `scheduledOpen`, `scheduledClose`, `scheduledReopen`.
-- Primary benchmark: `observedAt`, `price` (integer cash units per share, matching the contract).
-- Secondary benchmark: `observedAt`, `price`, `corroborated` (explicit independent confirmation for an extreme move).
-- Corporate action: `observedAt`, `action`, `actionId`, `multiplierNumerator`, `multiplierDenominator` (cumulative multiplier, not an inferred per-event ratio).
+- Primary benchmark: `assetId`, `sessionId`, `observedAt`, `price` (integer cash units per share, matching the contract).
+- Secondary benchmark: `assetId`, `sessionId`, `observedAt`, `price`, `corroborated` (explicit independent confirmation for an extreme move).
+- Corporate action: `assetId`, `observedAt`, `action`, `actionId`, `multiplierNumerator`, `multiplierDenominator` (cumulative multiplier, not an inferred per-event ratio).
 
 All integer amounts/timestamps are unsigned decimal strings. `kind` uses the Solidity enum: scheduled=1, close=2, reopen=3, corporate action=4, halt=5. Status is `SCHEDULED`, `OPEN`, `CLOSED`, or `HALTED`. Corporate actions are none=0, split=1, reverse split=2; other actions cannot be submitted. Asset-level reports use a zero session ID. Schedule open/close must match the oracle facts; the calendar supplies the official later reopen time. The oracle does not expose a separate scheduled-reopen timestamp, so this calendar field remains an external evidence requirement.
 
@@ -40,9 +40,11 @@ Replay replaces only the input adapter with `config.replay`, an object using exa
 
 `referenceSessionId` must identify a different finalized benchmark for the same asset. Missing reference data fails closed. **First-session bootstrap remains a deployment decision:** these finalized contracts expose no standalone reference-price getter, so this package does not invent a reference or silently take an unbound offchain value. The local settlement proof uses a synthetic reference matching its fixture's receipt; the SDK reader test separately proves reference-session reads. A real first-session run requires an approved reference-bootstrap procedure.
 
+Benchmark responses must explicitly identify the same asset/session as the calendar bundle and Arc state; corporate evidence must explicitly identify that asset. Adapters preserve those claims and never fill them from calendar identity. An OPEN calendar observation must itself occur at or after both the scheduled reopen and the stored close observation; a fresh price does not renew an earlier OPEN status.
+
 ## Report, retry, and logs
 
-The payload is exactly `Types.MarketEventReport`: 21 static ABI words / 672 bytes, in the order declared in `contracts/src/lib/Types.sol`. `keccak256(payload)` is the oracle report hash. Forwarder metadata and report IDs are not appended to this payload. Submission uses only `runtime.report` and `EVMClient.writeReport` to the configured mode-specific receiver; there is no generic call target or wallet transaction code.
+The payload is exactly `Types.MarketEventReport`: 21 static ABI words / 672 bytes, in the order declared in `contracts/src/lib/Types.sol`. `keccak256(payload)` is the oracle report hash. Forwarder metadata and report IDs are not appended to this payload. Submission uses only `runtime.report` and `EVMClient.writeReport` to the configured mode-specific receiver; there is no generic call target or wallet transaction code. `submitted` requires both transaction success and explicit receiver-execution success. A receiver revert returns `reverted`; absent receiver confirmation returns `unknown`, retaining any transaction hash without claiming acceptance or retrying the write.
 
 Configuration hashing is `keccak256(UTF8(canonicalJSON(parsedConfig)))`: recursively sort object keys lexicographically, preserve array order, retain decimal/hex strings, and omit whitespace. The workflow config hash is observability evidence; it is distinct from the onchain registry `configHash`, which is never replaced by it.
 

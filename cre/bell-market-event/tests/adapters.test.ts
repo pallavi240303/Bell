@@ -3,6 +3,31 @@ import test from 'node:test';
 import { keccak256, toHex, zeroHash } from 'viem';
 import { observeLive, observeReplay, readArcState } from '../src/adapters.ts';
 import { fixture, hash } from './fixtures.ts';
+import { execute } from '../src/core.ts';
+
+for (const mode of ['live', 'replay']) {
+    for (const [source, field] of [['primary', 'assetId'], ['primary', 'sessionId'], ['secondary', 'assetId'], ['secondary', 'sessionId'], ['corporate', 'assetId']] as const) {
+        for (const mismatch of ['missing', 'conflicting']) test(`${mode} rejects ${mismatch} ${source} ${field} without inferring calendar identity`, () => {
+            const f = fixture();
+            const config = { ...f.config, mode };
+            const state = { ...f.state, receiver: mode === 'live' ? config.liveReceiver : config.simulationReceiver, forwarder: mode === 'live' ? config.liveForwarder : config.simulationForwarder };
+            const bundle: any = structuredClone(f.bundle);
+            if (mismatch === 'missing') delete bundle[source][field];
+            else bundle[source][field] = hash('conflicting-identity');
+            const bodies: any = { calendar: { ...bundle.calendar, kind: bundle.kind, assetId: bundle.assetId, sessionId: bundle.sessionId, configHash: bundle.configHash }, primary: bundle.primary, secondary: bundle.secondary, corporate: bundle.corporate };
+            const observe = () => mode === 'live' ? observeLive(config, key => JSON.stringify(bodies[key])) : observeReplay(bundle);
+            if (mismatch === 'missing') assert.throws(observe, 'missing identities must fail parsing');
+            else {
+                const parsed = observe();
+                assert.equal((parsed[source] as any)[field], hash('conflicting-identity'), 'adapter must preserve claimed identity');
+                let writes = 0;
+                const result = execute(config, { now: () => f.now, readState: () => state, observe: () => parsed, submit: () => { writes++; return { status: 'success' }; }, log: () => {} });
+                assert.equal(result.status, 'reject');
+                assert.equal(writes, 0);
+            }
+        });
+    }
+}
 test('live HTTP responses and replay enter the identical canonical bundle', () => {
     const f = fixture();
     const requests: string[] = [];

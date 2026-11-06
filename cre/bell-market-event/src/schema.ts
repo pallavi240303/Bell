@@ -14,9 +14,10 @@ export const configSchema = z.object({
     replay: z.unknown().optional(),
 }).strict();
 export const evidenceSchema = z.object({ providerId: z.string(), url: z.string().url(), responseHash: bytes32, observedAt: uint, price: uint.optional(), corroborated: z.boolean().optional() });
-export const corporateSchema = evidenceSchema.extend({ action: z.number().int().min(0).max(5), actionId: bytes32, multiplierNumerator: uint, multiplierDenominator: uint });
+export const benchmarkEvidenceSchema = evidenceSchema.extend({ assetId: bytes32, sessionId: bytes32 });
+export const corporateSchema = evidenceSchema.extend({ assetId: bytes32, action: z.number().int().min(0).max(5), actionId: bytes32, multiplierNumerator: uint, multiplierDenominator: uint });
 export const calendarSchema = evidenceSchema.extend({ status: z.enum(['SCHEDULED', 'OPEN', 'CLOSED', 'HALTED']), scheduledOpen: uint, scheduledClose: uint, scheduledReopen: uint, validUntil: uint });
-export const bundleSchema = z.object({ kind: z.number().int().min(1).max(5), assetId: bytes32, sessionId: bytes32, configHash: bytes32, calendar: calendarSchema, primary: evidenceSchema.optional(), secondary: evidenceSchema.optional(), corporate: corporateSchema.optional() });
+export const bundleSchema = z.object({ kind: z.number().int().min(1).max(5), assetId: bytes32, sessionId: bytes32, configHash: bytes32, calendar: calendarSchema, primary: benchmarkEvidenceSchema.optional(), secondary: benchmarkEvidenceSchema.optional(), corporate: corporateSchema.optional() });
 const corporateFact = z.object({ action: z.number().int().min(0).max(5), actionId: bytes32, multiplierNumerator: uint, multiplierDenominator: uint, observedAt: uint });
 export const stateSchema = z.object({
     chainId: uint, oracle: address, receiver: address, forwarder: address, workflowId: bytes32, workflowOwner: address, assetId: bytes32,

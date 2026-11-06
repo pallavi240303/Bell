@@ -98,6 +98,15 @@ function validate(c: Config, b: ObservationBundle, s: ArcState, now: bigint): De
         requireThat(s.configHash === b.configHash, 'CONFIG_IDENTITY');
     const sessionEvent = b.kind <= 3;
     requireThat(b.sessionId === (sessionEvent ? c.sessionId : zeroHash), 'SESSION_IDENTITY');
+    // Bundle identity is supplied by the calendar adapter and bound to Arc above.
+    // Each provider must independently name the same fact; never infer its identity.
+    if (b.kind === 3) {
+        requireThat(b.primary && b.secondary, 'MISSING_EVIDENCE');
+        for (const benchmark of [b.primary, b.secondary])
+            requireThat(benchmark.assetId === b.assetId && benchmark.sessionId === b.sessionId, 'BENCHMARK_EVIDENCE_IDENTITY');
+    }
+    if (b.kind === 3 || b.kind === 4)
+        requireThat(b.corporate && b.corporate.assetId === b.assetId, 'CORPORATE_EVIDENCE_IDENTITY');
     const nonce = bounded(s.nextNonce, 64, true);
     requireThat(nonce < 2n ** 64n - 1n, 'NONCE_EXHAUSTED');
     const cal = source(b.calendar, 'calendar', c, now);
@@ -124,6 +133,8 @@ function validate(c: Config, b: ObservationBundle, s: ArcState, now: bigint): De
             requireThat(b.calendar.status === 'CLOSED' && observedAt >= close, 'CALENDAR_TIMING');
         else {
             requireThat(!s.halted && b.calendar.status === 'OPEN' && reopen >= close && observedAt >= reopen && observedAt >= BigInt(s.session.closeObservedAt), 'MARKET_STATUS');
+            const statusObservedAt = BigInt(b.calendar.observedAt);
+            requireThat(statusObservedAt >= reopen && statusObservedAt >= BigInt(s.session.closeObservedAt), 'OPEN_STATUS_TIMING');
             price = bounded(primary.price ?? '0', 256, true);
             const second = source(b.secondary, 'secondary', c, now);
             secondary = second.responseHash;
@@ -168,7 +179,7 @@ export interface Ports {
     readState(): unknown;
     observe(): unknown;
     submit(receiver: Hex, payload: Hex): {
-        status: 'success' | 'reverted' | 'fatal';
+        status: 'success' | 'reverted' | 'fatal' | 'unknown';
         txHash?: Hex;
     };
     log(message: string): void;
