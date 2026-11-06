@@ -1,0 +1,472 @@
+{
+  "schemaVersion": 1,
+  "authority": "CRE CLI SIMULATION / OFFICIAL MOCK FORWARDER / EXPLICIT SYNTHETIC REPLAY",
+  "chainId": "5042002",
+  "profile": "REPLAY",
+  "stock": "Mock token; no issuer backing",
+  "productionDON": false,
+  "liveOfficialPriceClaim": false,
+  "interactiveConsentVerified": false,
+  "actorFinancialTransactionsPerformed": false,
+  "manifestHash": "0xcddfb721f65a96274daf224680299c1cd22d8f7ce604e8059ede508629c4ab6f",
+  "supplements": "deployments/arc-optional-cover-evidence.json",
+  "preservesEarlierDeploymentAndEvidence": true,
+  "assetConfigurations": [
+    {
+      "lane": "demo",
+      "status": "confirmed in saved setup",
+      "assetId": "0x034d0c6d47ea5cc49ce2fec27e6b2210ddee6a7e31c10a11b1c320a41ea04727",
+      "configHash": "0x4e37900212b0e65d35a76de49e6992976f566e0961524725a18840d49fa375d6",
+      "effectiveAt": "1793965819",
+      "transactionHash": "0x17a2a7154030e327268b73242704e79b8e53b20f51a262c707b0a25ddff1e2c5",
+      "explorerUrl": "https://explorer.testnet.arc.io/tx/0x17a2a7154030e327268b73242704e79b8e53b20f51a262c707b0a25ddff1e2c5",
+      "source": "bootstrap confirmation plus lane config transaction record"
+    },
+    {
+      "lane": "proof",
+      "status": "confirmed in saved setup",
+      "assetId": "0xbe25ab822f7d8791dc2781746d7ae83d32195a9bc5941b51496c0623f9d3780b",
+      "configHash": "0xc243ae199de4a4261e4e14158dbe1fd1a3ef766463317d929f7fef5e19178c75",
+      "effectiveAt": "1793965824",
+      "transactionHash": "0x2b0f4d71edbc607dcf4f33fd3a1f102209d2248a5e916d4bda04fe199c4a8967",
+      "explorerUrl": "https://explorer.testnet.arc.io/tx/0x2b0f4d71edbc607dcf4f33fd3a1f102209d2248a5e916d4bda04fe199c4a8967",
+      "source": "bootstrap confirmation plus lane config transaction record"
+    }
+  ],
+  "boundedMockMint": {
+    "status": "confirmed by root public transaction metadata",
+    "transactionHash": "0x6ea80130a17be3928a9ff1468d57ae6f5012e21dcad034b7b4f204b3f7bb1a2d",
+    "blockNumber": "71024736",
+    "nonce": 37,
+    "recipient": "0x3e09f39d6c3fcc3372d35c304f3435317360ef4b",
+    "token": "0xfab1937a707294263a555dc2af27d753d2db4c1c",
+    "amountBaseUnits": "10000000000000000",
+    "tokenDecimals": 18,
+    "amountShares": "0.01",
+    "explorerUrl": "https://explorer.testnet.arc.io/tx/0x6ea80130a17be3928a9ff1468d57ae6f5012e21dcad034b7b4f204b3f7bb1a2d",
+    "provenance": "Root-supplied confirmed public metadata; mint transaction is not present in allowlisted bootstrap; no signed journal or mint receipt was read"
+  },
+  "nativeScheduleProof": {
+    "status": "accepted in saved canonical operator proof",
+    "lane": "proof",
+    "kind": 1,
+    "transactionHash": "0xb6ab66a810060281302821fbf8d10fe93919c521fb7780c4e188f380f72340a9",
+    "explorerUrl": "https://explorer.testnet.arc.io/tx/0xb6ab66a810060281302821fbf8d10fe93919c521fb7780c4e188f380f72340a9",
+    "blockNumber": "71029152",
+    "blockHash": "0x595bd5c990fd380026ddccf5934b396d4dc606d27a2c258cef5d105bff7aaf68",
+    "owner": "0xe3f075487d5ffb5bd7abe81d11f7927b8b8df51d",
+    "reportHash": "0x29f5b3966296afa26c876d686fc419f017588ebc129e70fed9ee2bec5c7103a3",
+    "assetId": "0xbe25ab822f7d8791dc2781746d7ae83d32195a9bc5941b51496c0623f9d3780b",
+    "sessionId": "0xaf505c1117ce6e5b0576619a721a7fc4cc3972a2db52cadb19fde32fbb215cc9",
+    "configHash": "0xc243ae199de4a4261e4e14158dbe1fd1a3ef766463317d929f7fef5e19178c75",
+    "reportNonce": "1",
+    "nextNonce": "2",
+    "stateHash": "0x3a0daad6b009b9d44243fe397269013a57e5e3b0863eaf369903decc29087219",
+    "boundary": [
+      {
+        "event": "ReportProcessed",
+        "emitter": "0x6e9ee680ef59ef64aa8c7371279c27e496b5edc1",
+        "logIndex": 10,
+        "recordedAccepted": true
+      },
+      {
+        "event": "ReceiverReportAccepted",
+        "emitter": "0x757b15c0ce785fe26be159ba98ca443d1e6394c4",
+        "logIndex": 9,
+        "recordedAccepted": true
+      },
+      {
+        "event": "MarketEventAccepted",
+        "emitter": "0xb60c0cff473d4d16e5efc8f7412cdd90e91f2417",
+        "logIndex": 8,
+        "recordedAccepted": true
+      }
+    ],
+    "wasmSHA256": "7ac149c12e919aba1add22a086f6e252a58c88b8838a5fff1a3f9a380f303fcf",
+    "scheduledOpen": "1793968502",
+    "scheduledClose": "1793969402",
+    "evidenceMeaning": "Real native-CLI public report acceptance through mock forwarder, receiver and oracle; synthetic schedule, not production DON or actor financial replay",
+    "currentReadiness": "Historical proof only; live phase, freshness, expiry and eligibility must be checked again"
+  },
+  "pendingEvidence": {
+    "interactiveActorReplay": {
+      "status": "PENDING_WALLET_ACTIONS",
+      "transactionHashes": []
+    }
+  },
+  "manualLocalDemo": {
+    "url": "http://localhost:5173",
+    "chainId": "31337",
+    "clock": "Controlled Anvil clock",
+    "ordinaryTransactionTimestampIntervalSeconds": 1,
+    "operatorTimeAdvance": "Explicit operator action only",
+    "actorLoansPresigned": false,
+    "walletActionChecklist": [
+      "Connect each role wallet on chain31337 and inspect the manifest and current phase.",
+      "Lender approves the pool and supplies liquidity.",
+      "Alice approves stock collateral to the vault, opens a loan, and borrows through LoanManager without cover.",
+      "Rahul and Meera approve the book and post their chosen fully escrowed offers.",
+      "Inside the cover window before cutoff, Alice approves any required premium and attaches cover to the same loan through CoverManager.",
+      "Check unchanged loan identity/principal history and continuing interest; verify out-of-window or invalid inputs reject.",
+      "Operator explicitly advances time/delivers supplied close and reopen facts; a wallet submits permissionless settlement.",
+      "Actors verify residual debt, buyer claims, unused-cash refunds and their own withdrawals.",
+      "Use separate runs for terminal closure and changed offers; retain actual receipts and exact parity results."
+    ],
+    "clockCommand": "await fixture.node.client.request({method:'anvil_setBlockTimestampInterval',params:[1]});",
+    "actorWallets": {
+      "Alice / borrower": "0x3e09f39d6c3fcc3372d35c304f3435317360ef4b",
+      "Rahul / buyer": "0x6da05b79d241f08a1556f7ded69ef3e74b520eca",
+      "Meera / buyer": "0x51af7c2a4b952767dff9028d4415252bdde93f30",
+      "Lender / deployment owner / keeper": "0xe3f075487d5ffb5bd7abe81d11f7927b8b8df51d"
+    },
+    "actorWalletMappingNote": "Public Arc role addresses are an explicit optional actors mapping; bootstrap defaults remain public local Anvil accounts."
+  },
+  "arcStudio": {
+    "appUrl": "https://studio.arc.io/app/bb079c72-6d74-4e95-a4ce-8703ca67cca9?thread=d4a3ec1a-b139-4e7e-ab46-9b7dbd36e961",
+    "sourceTransfer": "completed; approved source-only transfer",
+    "sourceFileCount": 262,
+    "totalBytes": 2721937,
+    "sourceManifestSHA256": "143d0f5c2f8998fa091efafb7a685cc89b4dd044f6eab700f4fa526d414abce4",
+    "sourceIntegrity": {
+      "matchingTextFilesAfterFinalPull": 259,
+      "matchingBinaryAssetsVerifiedInSandbox": 3,
+      "sourceFilesChangedByStudio": 0,
+      "ordinaryBinaryPullKnownLossy": true
+    },
+    "materialBuildEvidence": "docs/STUDIO_BUILD.md",
+    "defaultBuildGatesPassed": [
+      "forge build",
+      "ABI check",
+      "root TypeScript",
+      "CRE TypeScript",
+      "CRE Solidity integration",
+      "Vite production build"
+    ],
+    "publicAPI": {
+      "stateHTTPStatus": 200,
+      "stateObservedSeconds": [
+        30.4,
+        68.4
+      ],
+      "viteProxyStateHTTPStatus": 200,
+      "viteProxyStateObservedSeconds": 43.5,
+      "eventsHTTPStatus": 200,
+      "eventCount": 11,
+      "matchingBoundary": {
+        "number": "71030708",
+        "hash": "0x44d029e218f49b9065150c3876e655452fbbda9dc47560cd783d09d9cb89a3b5",
+        "timestamp": "1793969137"
+      },
+      "source": "Arc Studio recorded read-only checks; see generated build record"
+    },
+    "embeddedPreviewRenders": true,
+    "renderedNetworkBadgeVerified": false,
+    "walletInteractionsVerified": false,
+    "secretVaultProvisionedClaim": false,
+    "githubSynchronized": false,
+    "limitations": [
+      "Observed public state reads take tens of seconds",
+      "Four sandbox EngineDiff tests hit the Linux per-argument FFI limit; local full contract suite passed separately",
+      "No native CRE CLI or browser test runner installed inside Studio",
+      "Connected public actor financial replay requires actor wallet signatures",
+      "Explorer source verification and submission video remain outstanding"
+    ]
+  },
+  "verificationScope": "Read-only extraction of saved public/setup proofs; no new RPC canonicality or balance checks",
+  "sourceDigests": [
+    {
+      "source": "bootstrap.json",
+      "sha256": "419095d44272b364752185c6d697eb108b7f06ce9fd4f817f1e012f737abd16d"
+    },
+    {
+      "source": "demo-config.json",
+      "sha256": "b99d072e7cedef007f5e0eb40c75a2dc0f303bedfba39f6fff1bc08071d3292e"
+    },
+    {
+      "source": "proof-config.json",
+      "sha256": "955a760fc511093a30980d383d92dcf47a8a3abbfba4adfd9efe81cc5abc9715"
+    },
+    {
+      "source": "proof-schedule-proof.json",
+      "sha256": "50b23077212ec5ff68a1465f6542a8bb818728958a8a2a149c642bb226384840"
+    },
+    {
+      "source": "deployment-evidence",
+      "sha256": "18989f06eaf5c052f5f14e5394dd24b10892dab1e2e8fc57ce28a5ed056e1c42"
+    },
+    {
+      "source": "docs",
+      "sha256": "4bb9570e0cac74f4eab42aa6654ca09864aefa68746875fe1772b51da244191f"
+    },
+    {
+      "source": "proof-price-proof.json",
+      "sha256": "1794efbc5480973916ca9253df8471fc5682b4e67df04f7ca289e185b32b1ef8"
+    },
+    {
+      "source": "demo-schedule-proof.json",
+      "sha256": "fd4be15ee61372aa879b94216120cf18b483dd79d4adea2673d6e6bf68e66ab0"
+    },
+    {
+      "source": "demo-price-proof.json",
+      "sha256": "0a2c8655ef4fe702f91e594b5178523f4bb5e7f01d10454bba7b090285f7dd60"
+    }
+  ],
+  "nativeMarketPriceProof": {
+    "status": "accepted in saved canonical operator proof",
+    "lane": "proof",
+    "kind": 6,
+    "transactionHash": "0x5cc711d23ea029117533d7374863aece4d506fb72443ad4376e529ce38476063",
+    "explorerUrl": "https://explorer.testnet.arc.io/tx/0x5cc711d23ea029117533d7374863aece4d506fb72443ad4376e529ce38476063",
+    "blockNumber": "71029550",
+    "blockHash": "0xf63ebb1f5e566e1fd0dade86398559fd02c323e3025c8dd81e2c9667c0d3649c",
+    "owner": "0xe3f075487d5ffb5bd7abe81d11f7927b8b8df51d",
+    "reportHash": "0x6de378df260006e0aa2ea43fb0d38edd277c3469d689a92c5f78140d23bf8c0f",
+    "assetId": "0xbe25ab822f7d8791dc2781746d7ae83d32195a9bc5941b51496c0623f9d3780b",
+    "sessionId": "0xaf505c1117ce6e5b0576619a721a7fc4cc3972a2db52cadb19fde32fbb215cc9",
+    "configHash": "0xc243ae199de4a4261e4e14158dbe1fd1a3ef766463317d929f7fef5e19178c75",
+    "reportNonce": "2",
+    "nextNonce": "3",
+    "stateHash": "0xb96b9ae0423a6abf1f47e6b7019eeef72dcaa8f3b915e943e855b4c16f183ba0",
+    "boundary": [
+      {
+        "event": "ReportProcessed",
+        "emitter": "0x6e9ee680ef59ef64aa8c7371279c27e496b5edc1",
+        "logIndex": 21,
+        "recordedAccepted": true
+      },
+      {
+        "event": "ReceiverReportAccepted",
+        "emitter": "0x757b15c0ce785fe26be159ba98ca443d1e6394c4",
+        "logIndex": 20,
+        "recordedAccepted": true
+      },
+      {
+        "event": "MarketEventAccepted",
+        "emitter": "0xb60c0cff473d4d16e5efc8f7412cdd90e91f2417",
+        "logIndex": 19,
+        "recordedAccepted": true
+      }
+    ],
+    "wasmSHA256": "7ac149c12e919aba1add22a086f6e252a58c88b8838a5fff1a3f9a380f303fcf",
+    "authority": "Explicit synthetic replay through native CRE CLI simulation and official mock forwarder; not production DON",
+    "currentReadiness": "Historical acceptance; recheck chain phase/reference expiry/eligibility before actor actions",
+    "reference": {
+      "sessionId": "0xaf505c1117ce6e5b0576619a721a7fc4cc3972a2db52cadb19fde32fbb215cc9",
+      "price": "100000000",
+      "multiplierNumerator": "1",
+      "multiplierDenominator": "1",
+      "observedAt": "1793968525",
+      "validUntil": "1793969725",
+      "primarySourceHash": "0xe8a16127e0b1464db4a41113342a20bc99b9429ac0a7188418b2f08b223ca315",
+      "secondarySourceHash": "0x0ff8fbb12161581c47bc6a3f1dd04c7488555404a196450854409184087f2f0f",
+      "reportHash": "0x6de378df260006e0aa2ea43fb0d38edd277c3469d689a92c5f78140d23bf8c0f",
+      "priceDecimals": 6
+    },
+    "officialReopeningBenchmark": false,
+    "reportSessionId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "activeSessionId": "0xaf505c1117ce6e5b0576619a721a7fc4cc3972a2db52cadb19fde32fbb215cc9"
+  },
+  "nativeDemoScheduleProof": {
+    "status": "accepted in saved canonical operator proof",
+    "lane": "demo",
+    "kind": 1,
+    "transactionHash": "0xada112fdc1a4f49b5557c08fa907dbcf5ce8df6c4663f4f5c54a50f8629cc78e",
+    "explorerUrl": "https://explorer.testnet.arc.io/tx/0xada112fdc1a4f49b5557c08fa907dbcf5ce8df6c4663f4f5c54a50f8629cc78e",
+    "blockNumber": "71029232",
+    "blockHash": "0xdad33db9aa79584739d27bc4984bc4505d231cb13ce24b45307c148714a3ee2d",
+    "owner": "0xe3f075487d5ffb5bd7abe81d11f7927b8b8df51d",
+    "reportHash": "0x5ace132ff24edaed93994124489e9c358442a72b1843864bf112afc201f9bb3c",
+    "assetId": "0x034d0c6d47ea5cc49ce2fec27e6b2210ddee6a7e31c10a11b1c320a41ea04727",
+    "sessionId": "0xe613e37add21ac42c9c5cf3ed4ca18ec2340bf998ab58c96f71e6aa051a22dfd",
+    "configHash": "0x4e37900212b0e65d35a76de49e6992976f566e0961524725a18840d49fa375d6",
+    "reportNonce": "1",
+    "nextNonce": "2",
+    "stateHash": "0x5f92bef044aa481850def39c4eb941f304a832f7a067a1242e33f3b7369b7880",
+    "boundary": [
+      {
+        "event": "ReportProcessed",
+        "emitter": "0x6e9ee680ef59ef64aa8c7371279c27e496b5edc1",
+        "logIndex": 17,
+        "recordedAccepted": true
+      },
+      {
+        "event": "ReceiverReportAccepted",
+        "emitter": "0x757b15c0ce785fe26be159ba98ca443d1e6394c4",
+        "logIndex": 16,
+        "recordedAccepted": true
+      },
+      {
+        "event": "MarketEventAccepted",
+        "emitter": "0xb60c0cff473d4d16e5efc8f7412cdd90e91f2417",
+        "logIndex": 15,
+        "recordedAccepted": true
+      }
+    ],
+    "wasmSHA256": "7ac149c12e919aba1add22a086f6e252a58c88b8838a5fff1a3f9a380f303fcf",
+    "authority": "Explicit synthetic replay through native CRE CLI simulation and official mock forwarder; not production DON",
+    "currentReadiness": "Historical acceptance; recheck chain phase/reference expiry/eligibility before actor actions",
+    "scheduledOpen": "1793968544",
+    "scheduledClose": "1793972144",
+    "reportSessionId": "0xe613e37add21ac42c9c5cf3ed4ca18ec2340bf998ab58c96f71e6aa051a22dfd",
+    "activeSessionId": "0xe613e37add21ac42c9c5cf3ed4ca18ec2340bf998ab58c96f71e6aa051a22dfd"
+  },
+  "nativeDemoMarketPriceProof": {
+    "status": "accepted in saved canonical operator proof",
+    "lane": "demo",
+    "kind": 6,
+    "transactionHash": "0xf2d8c3472d8bedd8b2d8a4cdee0270022574ca841a24517cc15ef31efbb38ba0",
+    "explorerUrl": "https://explorer.testnet.arc.io/tx/0xf2d8c3472d8bedd8b2d8a4cdee0270022574ca841a24517cc15ef31efbb38ba0",
+    "blockNumber": "71029635",
+    "blockHash": "0x500b5e072f2fbeb5820a9070924f443e0c481d063476e364b35990cacd402dbc",
+    "owner": "0xe3f075487d5ffb5bd7abe81d11f7927b8b8df51d",
+    "reportHash": "0x5a6ff8583be82b24939ef725651ed4cf87f5f966581613e91c50c4d2cce1de43",
+    "assetId": "0x034d0c6d47ea5cc49ce2fec27e6b2210ddee6a7e31c10a11b1c320a41ea04727",
+    "sessionId": "0xe613e37add21ac42c9c5cf3ed4ca18ec2340bf998ab58c96f71e6aa051a22dfd",
+    "configHash": "0x4e37900212b0e65d35a76de49e6992976f566e0961524725a18840d49fa375d6",
+    "reportNonce": "2",
+    "nextNonce": "3",
+    "stateHash": "0x7d907729904c777ddb0e4df40d7243211b29aa2f5ce382a79cecdd7945fa7c1d",
+    "boundary": [
+      {
+        "event": "ReportProcessed",
+        "emitter": "0x6e9ee680ef59ef64aa8c7371279c27e496b5edc1",
+        "logIndex": 18,
+        "recordedAccepted": true
+      },
+      {
+        "event": "ReceiverReportAccepted",
+        "emitter": "0x757b15c0ce785fe26be159ba98ca443d1e6394c4",
+        "logIndex": 17,
+        "recordedAccepted": true
+      },
+      {
+        "event": "MarketEventAccepted",
+        "emitter": "0xb60c0cff473d4d16e5efc8f7412cdd90e91f2417",
+        "logIndex": 16,
+        "recordedAccepted": true
+      }
+    ],
+    "wasmSHA256": "7ac149c12e919aba1add22a086f6e252a58c88b8838a5fff1a3f9a380f303fcf",
+    "authority": "Explicit synthetic replay through native CRE CLI simulation and official mock forwarder; not production DON",
+    "currentReadiness": "Historical acceptance; recheck chain phase/reference expiry/eligibility before actor actions",
+    "reference": {
+      "sessionId": "0xe613e37add21ac42c9c5cf3ed4ca18ec2340bf998ab58c96f71e6aa051a22dfd",
+      "price": "100000000",
+      "multiplierNumerator": "1",
+      "multiplierDenominator": "1",
+      "observedAt": "1793968576",
+      "validUntil": "1793969776",
+      "primarySourceHash": "0xe29f8ea9cc2ae743f2b934241272d78242d4261d00699b9cb923071c1c9c0d72",
+      "secondarySourceHash": "0x1ee64b1b9f92e7a667dfb8986d09d0ab705479dfb7404f2f912b89f72542fe8c",
+      "reportHash": "0x5a6ff8583be82b24939ef725651ed4cf87f5f966581613e91c50c4d2cce1de43",
+      "priceDecimals": 6
+    },
+    "officialReopeningBenchmark": false,
+    "reportSessionId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "activeSessionId": "0xe613e37add21ac42c9c5cf3ed4ca18ec2340bf998ab58c96f71e6aa051a22dfd"
+  },
+  "actorWallets": {
+    "Alice / borrower": "0x3e09f39d6c3fcc3372d35c304f3435317360ef4b",
+    "Rahul / buyer": "0x6da05b79d241f08a1556f7ded69ef3e74b520eca",
+    "Meera / buyer": "0x51af7c2a4b952767dff9028d4415252bdde93f30",
+    "Lender / deployment owner / keeper": "0xe3f075487d5ffb5bd7abe81d11f7927b8b8df51d"
+  },
+  "buyerEligibility": {
+    "status": "confirmed by root public operator output",
+    "policyHash": "0x1428a5ebea255ff30c9d2c54eb4470f29a61a72bc9dff4251ddb8f43c8b1fa8e",
+    "permissionModel": "Permissionless mock eligibility; not production identity enforcement",
+    "provenance": "Root-supplied public helper output; no signed journal or eligibility receipt file was read",
+    "buyers": [
+      {
+        "role": "Rahul / buyer",
+        "address": "0x6da05b79d241f08a1556f7ded69ef3e74b520eca",
+        "transactionHash": "0x0898ed6fad0cff8d7bfed309f36dec7583a6c64ffd2745559aa96d2209ef7e03",
+        "blockNumber": "71029691",
+        "explorerUrl": "https://explorer.testnet.arc.io/tx/0x0898ed6fad0cff8d7bfed309f36dec7583a6c64ffd2745559aa96d2209ef7e03"
+      },
+      {
+        "role": "Meera / buyer",
+        "address": "0x51af7c2a4b952767dff9028d4415252bdde93f30",
+        "transactionHash": "0x7adb646b634a619b42e2fadf579bff3ecb466bc86214c4d2e48a29b6f8fc35c3",
+        "blockNumber": "71029702",
+        "explorerUrl": "https://explorer.testnet.arc.io/tx/0x7adb646b634a619b42e2fadf579bff3ecb466bc86214c4d2e48a29b6f8fc35c3"
+      }
+    ]
+  },
+  "demoTimingSnapshot": {
+    "quoteValidUntil": "1793969776",
+    "coverWindowOpensAt": "1793971544",
+    "coverCutoffAt": "1793972084",
+    "scheduledClose": "1793972144",
+    "quoteExpiresBeforeCoverWindow": true,
+    "requiredAction": "Refresh qualifying synthetic MARKET_PRICE before later cover-window actions; recheck current reference, policy, phase and cutoff",
+    "readinessClaim": false,
+    "provenance": "Quote expiry from saved demo price proof; window/cutoff/close from root public timing output"
+  },
+  "canonicalVerification": {
+    "chainId": "5042002",
+    "canonicalFinalizedBlock": "71030126",
+    "canonicalFinalizedHash": "0x63b9a64649676c26530eb39668677b5256cf6ebbc2181bec5e0f5d42dd85669a",
+    "canonicalFinalizedTimestamp": "1793968841",
+    "checks": [
+      {
+        "name": "proof-schedule",
+        "transactionHash": "0xb6ab66a810060281302821fbf8d10fe93919c521fb7780c4e188f380f72340a9",
+        "blockNumber": "71029152",
+        "blockHash": "0x595bd5c990fd380026ddccf5934b396d4dc606d27a2c258cef5d105bff7aaf68",
+        "reportHash": "0x29f5b3966296afa26c876d686fc419f017588ebc129e70fed9ee2bec5c7103a3",
+        "oracleAccepted": true,
+        "receiverAccepted": true,
+        "officialMockForwarderLog": true
+      },
+      {
+        "name": "proof-price",
+        "transactionHash": "0x5cc711d23ea029117533d7374863aece4d506fb72443ad4376e529ce38476063",
+        "blockNumber": "71029550",
+        "blockHash": "0xf63ebb1f5e566e1fd0dade86398559fd02c323e3025c8dd81e2c9667c0d3649c",
+        "reportHash": "0x6de378df260006e0aa2ea43fb0d38edd277c3469d689a92c5f78140d23bf8c0f",
+        "oracleAccepted": true,
+        "receiverAccepted": true,
+        "officialMockForwarderLog": true
+      },
+      {
+        "name": "demo-schedule",
+        "transactionHash": "0xada112fdc1a4f49b5557c08fa907dbcf5ce8df6c4663f4f5c54a50f8629cc78e",
+        "blockNumber": "71029232",
+        "blockHash": "0xdad33db9aa79584739d27bc4984bc4505d231cb13ce24b45307c148714a3ee2d",
+        "reportHash": "0x5ace132ff24edaed93994124489e9c358442a72b1843864bf112afc201f9bb3c",
+        "oracleAccepted": true,
+        "receiverAccepted": true,
+        "officialMockForwarderLog": true
+      },
+      {
+        "name": "demo-price",
+        "transactionHash": "0xf2d8c3472d8bedd8b2d8a4cdee0270022574ca841a24517cc15ef31efbb38ba0",
+        "blockNumber": "71029635",
+        "blockHash": "0x500b5e072f2fbeb5820a9070924f443e0c481d063476e364b35990cacd402dbc",
+        "reportHash": "0x5a6ff8583be82b24939ef725651ed4cf87f5f966581613e91c50c4d2cce1de43",
+        "oracleAccepted": true,
+        "receiverAccepted": true,
+        "officialMockForwarderLog": true
+      }
+    ],
+    "actorFinancialState": {
+      "nextLoanId": "1",
+      "nextReceiptId": "1",
+      "poolSupply": "0"
+    },
+    "eligibility": [
+      {
+        "actor": "0x6da05b79d241f08a1556f7ded69ef3e74b520eca",
+        "policyHash": "0x1428a5ebea255ff30c9d2c54eb4470f29a61a72bc9dff4251ddb8f43c8b1fa8e",
+        "eligible": true
+      },
+      {
+        "actor": "0x51af7c2a4b952767dff9028d4415252bdde93f30",
+        "policyHash": "0x1428a5ebea255ff30c9d2c54eb4470f29a61a72bc9dff4251ddb8f43c8b1fa8e",
+        "eligible": true
+      }
+    ],
+    "authority": "native CLI simulation, explicit synthetic replay, mock stock/eligibility; no production DON"
+  }
+}

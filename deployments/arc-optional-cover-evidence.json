@@ -1,0 +1,128 @@
+{
+  "authority": "CRE CLI SIMULATION / OFFICIAL MOCK FORWARDER",
+  "asset": "Mock stock; no issuer backing",
+  "profile": "REPLAY",
+  "chainId": "5042002",
+  "deploymentBlock": "71021459",
+  "verification": {
+    "verifiedAt": {
+      "number": "71022011",
+      "hash": "0xb8aac03c5cc721b21f2433c357ac6d81a90298229c98b8a5190c5e144e0ef11e",
+      "timestamp": "1793964700"
+    },
+    "profile": "REPLAY",
+    "offsets": {
+      "opensBeforeClose": "600",
+      "cutoffBeforeClose": "60"
+    },
+    "bookEligibility": "0xbF187808dfe7fc20B433a6004FE60F307F41e85a",
+    "owner": "0xe3f075487D5FFB5bD7AbE81d11F7927B8b8Df51D",
+    "actorFinancialTransactions": false,
+    "readPacing": "sequential 1.2seconds after response; bounded rate-limit retries"
+  },
+  "transactions": [
+    {
+      "step": "deploy-stock",
+      "hash": "0x7a4921f909f3243c8a337e3bd028f080ba4ceb74f993cf8c30f66147c6fd2d4b",
+      "blockNumber": "71021382",
+      "contractAddress": "0xfab1937a707294263a555dc2af27d753d2db4c1c",
+      "explorerUrl": "https://explorer.testnet.arc.io/tx/0x7a4921f909f3243c8a337e3bd028f080ba4ceb74f993cf8c30f66147c6fd2d4b"
+    },
+    {
+      "step": "deploy-registry",
+      "hash": "0xa11bb855e76b7e4f90bdd0d9acb4450a0909d2a3590c545b23c90952426a5c02",
+      "blockNumber": "71021389",
+      "contractAddress": "0xeb9c98789dd35a0402caa90542ac1fe16a09bf6b",
+      "explorerUrl": "https://explorer.testnet.arc.io/tx/0xa11bb855e76b7e4f90bdd0d9acb4450a0909d2a3590c545b23c90952426a5c02"
+    },
+    {
+      "step": "deploy-oracle",
+      "hash": "0x88de6ea4aa1f504b6ae0c787e73c4f6a27efcd53f180b2be776cae3f31a1a43a",
+      "blockNumber": "71021396",
+      "contractAddress": "0xb60c0cff473d4d16e5efc8f7412cdd90e91f2417",
+      "explorerUrl": "https://explorer.testnet.arc.io/tx/0x88de6ea4aa1f504b6ae0c787e73c4f6a27efcd53f180b2be776cae3f31a1a43a"
+    },
+    {
+      "step": "deploy-eligibility",
+      "hash": "0x034938ba640a11d0adde4476fffb4cbcbb1f2ea6fcd8528abe6bce1b3896ab58",
+      "blockNumber": "71021403",
+      "contractAddress": "0xbf187808dfe7fc20b433a6004fe60f307f41e85a",
+      "explorerUrl": "https://explorer.testnet.arc.io/tx/0x034938ba640a11d0adde4476fffb4cbcbb1f2ea6fcd8528abe6bce1b3896ab58"
+    },
+    {
+      "step": "deploy-book",
+      "hash": "0xdc37c10671e92a204f2daea660a8f2e988e82432315a03726a6b056bb06ad205",
+      "blockNumber": "71021408",
+      "contractAddress": "0x3f0619a06a27417cdae0ab78dbe50e4edf866289",
+      "explorerUrl": "https://explorer.testnet.arc.io/tx/0xdc37c10671e92a204f2daea660a8f2e988e82432315a03726a6b056bb06ad205"
+    },
+    {
+      "step": "deploy-pool",
+      "hash": "0x773c4a1b60f9c0fcbb292ff8c3eaafb899862995689bdf594b79e7625d05e9bf",
+      "blockNumber": "71021413",
+      "contractAddress": "0xe0f42a574a11ec1315521688f2340ade3fcd7751",
+      "explorerUrl": "https://explorer.testnet.arc.io/tx/0x773c4a1b60f9c0fcbb292ff8c3eaafb899862995689bdf594b79e7625d05e9bf"
+    },
+    {
+      "step": "deploy-vault",
+      "hash": "0x080b3b39e41497752884e34438107becd9ef598c673f291b4122eb92461410ac",
+      "blockNumber": "71021419",
+      "contractAddress": "0xa76ded1b9b8fc58f393c7f4a0417e5cf711f87e3",
+      "explorerUrl": "https://explorer.testnet.arc.io/tx/0x080b3b39e41497752884e34438107becd9ef598c673f291b4122eb92461410ac"
+    },
+    {
+      "step": "deploy-loanManager",
+      "hash": "0x77370770c880e0cc643102f86bec6be20b6d8f1ce6fa365735a8161baf840b0b",
+      "blockNumber": "71021426",
+      "contractAddress": "0xffb0353b2a4c86af1ec4661e768e051612343757",
+      "explorerUrl": "https://explorer.testnet.arc.io/tx/0x77370770c880e0cc643102f86bec6be20b6d8f1ce6fa365735a8161baf840b0b"
+    },
+    {
+      "step": "deploy-manager",
+      "hash": "0xec285714387c8f9fdcb6a2c77e39fc37c524d73e5488318331d9abd9c1aec96d",
+      "blockNumber": "71021433",
+      "contractAddress": "0xc4f7aef503279bed1ad60076a81d7ad6997d7175",
+      "explorerUrl": "https://explorer.testnet.arc.io/tx/0xec285714387c8f9fdcb6a2c77e39fc37c524d73e5488318331d9abd9c1aec96d"
+    },
+    {
+      "step": "deploy-receiver",
+      "hash": "0x434082bbfd0ddfee9540cca78ee166444f3ea3c4caa3ee5c8cd362d960239eaa",
+      "blockNumber": "71021440",
+      "contractAddress": "0x757b15c0ce785fe26be159ba98ca443d1e6394c4",
+      "explorerUrl": "https://explorer.testnet.arc.io/tx/0x434082bbfd0ddfee9540cca78ee166444f3ea3c4caa3ee5c8cd362d960239eaa"
+    },
+    {
+      "step": "wire-book",
+      "hash": "0xa2f124a73d7807f0d526781f8177c16f38a5d4e6b544dbaa48039810a6db2572",
+      "blockNumber": "71021444",
+      "explorerUrl": "https://explorer.testnet.arc.io/tx/0xa2f124a73d7807f0d526781f8177c16f38a5d4e6b544dbaa48039810a6db2572"
+    },
+    {
+      "step": "wire-pool",
+      "hash": "0x196c4eb2fe076672120fb63601592e658160d510ea5d82aa0467412a379627c7",
+      "blockNumber": "71021447",
+      "explorerUrl": "https://explorer.testnet.arc.io/tx/0x196c4eb2fe076672120fb63601592e658160d510ea5d82aa0467412a379627c7"
+    },
+    {
+      "step": "wire-vault",
+      "hash": "0xc75a122c6f48a91cbeb4f15658dac3a3b371aff9093525f9749f273acfef0200",
+      "blockNumber": "71021451",
+      "explorerUrl": "https://explorer.testnet.arc.io/tx/0xc75a122c6f48a91cbeb4f15658dac3a3b371aff9093525f9749f273acfef0200"
+    },
+    {
+      "step": "wire-oracle",
+      "hash": "0x07e95f45de576f246660e43ae0ca69fa3932191992f34ace7b99474535e8fed3",
+      "blockNumber": "71021455",
+      "explorerUrl": "https://explorer.testnet.arc.io/tx/0x07e95f45de576f246660e43ae0ca69fa3932191992f34ace7b99474535e8fed3"
+    },
+    {
+      "step": "wire-loanManager",
+      "hash": "0x6e023920c953e285f7ad083a45f4fa06847462cf2b4f8252ae0379c8b02e3e89",
+      "blockNumber": "71021459",
+      "explorerUrl": "https://explorer.testnet.arc.io/tx/0x6e023920c953e285f7ad083a45f4fa06847462cf2b4f8252ae0379c8b02e3e89"
+    }
+  ],
+  "actorFinancialTransactionsPerformed": false,
+  "explorerSourceVerification": "not completed",
+  "assetConfiguration": "pending"
+}

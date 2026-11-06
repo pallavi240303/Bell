@@ -1,0 +1,30 @@
+{
+  "chainId": "5042002",
+  "deploymentBlock": "71021459",
+  "addresses": {
+    "cash": "0x3600000000000000000000000000000000000000",
+    "stock": "0xfab1937a707294263a555dc2af27d753d2db4c1c",
+    "registry": "0xeb9c98789dd35a0402caa90542ac1fe16a09bf6b",
+    "oracle": "0xb60c0cff473d4d16e5efc8f7412cdd90e91f2417",
+    "eligibility": "0xbf187808dfe7fc20b433a6004fe60f307f41e85a",
+    "book": "0x3f0619a06a27417cdae0ab78dbe50e4edf866289",
+    "pool": "0xe0f42a574a11ec1315521688f2340ade3fcd7751",
+    "vault": "0xa76ded1b9b8fc58f393c7f4a0417e5cf711f87e3",
+    "loanManager": "0xffb0353b2a4c86af1ec4661e768e051612343757",
+    "manager": "0xc4f7aef503279bed1ad60076a81d7ad6997d7175",
+    "receiver": "0x757b15c0ce785fe26be159ba98ca443d1e6394c4"
+  },
+  "codeHashes": {
+    "cash": "0xc9987bd3af6b26a030951faa7eacc017b68343aeedf3ce5fe68f821c4b93939d",
+    "stock": "0x847ad5b0dd1293ee7c77725fa7285f24d187c8cd4fc75b34094cacb8023b63a7",
+    "registry": "0xf22026b2f53c2d48931390f44e6b0522c94532b82fe2e20f98c511ac4258be17",
+    "oracle": "0xf5eb653d9acc3330b77fb381caa1217b6a004495e9db33353bd98cd2381c24b8",
+    "eligibility": "0xe13a8254da72792064e8d5368d67ca4320e9691a4d5f49d426af78da188635b5",
+    "book": "0x3669862b7668a519f7b23dbc0c2cdb654e626c93140a74f6fe57dbda389d4b1b",
+    "pool": "0x6b9f8c833fd9085d5927428a7b7a8b4af2d1f44e20406ae22e5d0f425993175d",
+    "vault": "0x4a9aa9af29d81f0b2ed11b9ab4746b2d07ae145f668e810db11ac98cf977c3cd",
+    "loanManager": "0x16002f849c33f44d954d5b668ea549c4c3d1986c4fd960975d48729a8ab73e10",
+    "manager": "0x67f07e47c0f757b15823fe8d3a4da2a68a9bfe24ea8fc955cb0117c96a221670",
+    "receiver": "0xf52e78c0183a11d1b36acb010f01bc74e821ac1ceb445a6b028487f810586056"
+  }
+}
