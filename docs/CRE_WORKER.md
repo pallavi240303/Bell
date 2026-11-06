@@ -4,6 +4,18 @@ The worker runs the existing compiled CRE workflow in a background container. It
 
 This is native CRE CLI simulation. Dry run is the default and does not broadcast. Explicit broadcast mode can submit workflow reports through the configured simulation forwarder. Neither mode establishes a deployed live DON workflow, user consent, buyer eligibility, lender funding, borrowing or settlement transactions. Seeded or generated jobs do not authorize public actor transactions.
 
+## Published image
+
+The public `linux/amd64` image is available anonymously as `ghcr.io/pallavi240303/bell-cre-worker:latest` and commit tag `acc81370f93991e1a83911d5efd4de6a11586095`.
+
+Immutable reference:
+
+```text
+ghcr.io/pallavi240303/bell-cre-worker@sha256:11aea662fefedb9d453e7041a50d62831c26101657bc380ea12b26579bb046a9
+```
+
+[Verified release run](https://github.com/pallavi240303/Bell/actions/runs/42259046136): compilation, 16 worker tests, image boundary, health, graceful stop and persistent-volume restart passed. Registry publication, pull-back and anonymous manifest access were verified. Authenticated native CI integration was not selected; the local native simulation evidence is recorded below.
+
 ## Run with Docker Compose
 
 Use a native `linux/amd64` Docker host with persistent storage. The CRE Linux binary failed under the tested Mac QEMU emulation, so ARM emulation is not a verified hosting option. No web port is exposed.
