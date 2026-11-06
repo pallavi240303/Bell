@@ -62,3 +62,23 @@ test('wallet rejection is propagated and account changes during receipt wait inv
 });
 
 test('removed manager loan methods cannot be prepared by a browser',async()=>{const x=await setup();for(const method of ['borrowWithCover','repay','addCollateral','withdrawCollateral','liquidate','topUpBacking','finalizeHandoff'])assert.throws(()=>x.client.expected({contract:'manager',method,args:[]}));});
+
+test('settlement intent encodes only the explicit receipt on the manager and checks unsigned identity',async()=>{
+ for(const settlement of ['settle','terminalSettle'] as const){
+  const x=await setup(),intent={settlement,receiptId:'9007199254740993'};
+  const data=encodeFunctionData({abi:x.abis.manager,functionName:settlement,args:[9007199254740993n]});
+  const unsigned={...x.unsigned,to:x.manifest.addresses.manager,data};let refreshed=false;
+  await x.client.send(intent as any,unsigned,async()=>{refreshed=true;});assert.equal(refreshed,true);
+  for(const bad of [{chainId:'1'},{from:address(4)},{to:x.manifest.addresses.loanManager},{value:'1'},{data:encodeFunctionData({abi:x.abis.manager,functionName:settlement,args:[1n]})},{sourceBlockHash:`0x${'cd'.repeat(32)}`}]){
+   const count=x.calls.filter(c=>c.method==='eth_sendTransaction').length;
+   await assert.rejects(()=>x.client.send(intent as any,{...unsigned,...bad},async()=>{}));assert.equal(x.calls.filter(c=>c.method==='eth_sendTransaction').length,count);
+  }
+  for(const receiptId of ['01',1,'-1'])assert.throws(()=>x.client.expected({settlement,receiptId} as any));
+  assert.throws(()=>x.client.expected({contract:'manager',method:settlement,args:['1']}));
+ }
+});
+test('disposing a provider while preparing or connecting invalidates its pending generation',async()=>{
+ const x=await setup();let finish!:(value:any)=>void;
+ x.provider.request=async({method}:any)=>method==='eth_requestAccounts'?new Promise(r=>finish=r):method==='eth_accounts'?[account]:'0x7a69';
+ const pending=x.client.connect();x.client.dispose();finish([account]);await assert.rejects(()=>pending,/changed/i);assert.equal(x.client.verified,false);assert.equal(x.client.account,undefined);
+});

@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import {useBell} from '@/state/useBell';
 import {abis} from '@/generated/abis';
 import {json} from '@/adapter/transport';
@@ -11,6 +11,7 @@ export function ActorTools({role}:{role:'borrower'|'buyer'|'lender'}){
   const v=useBell(),c=v.controller;
   const [purpose,setPurpose]=useState(role==='lender'?'deposit':role==='buyer'?'offer':'collateral');
   const [approval,setApproval]=useState('');const method=v.loanMethod,args=v.loanArgs;
+  useEffect(()=>{setApproval('');},[v.wallet.session]);
   const fn=(role==='buyer'?abis.book:abis.manager).find(x=>x.type==='function'&&x.name===(role==='buyer'?'postOffer':'buyCover')) as any;
   const fields=(fn?.inputs[role==='buyer'?0:1]?.components??[]).map((x:any)=>`${x.name}: ${x.type}`).join('\n');
   let review='Complete consent and select whole lots to review the exact transaction hash.';
@@ -23,8 +24,13 @@ export function ActorTools({role}:{role:'borrower'|'buyer'|'lender'}){
       <span>{v.labels.receiver}</span>
       <span>{c.manifest?.chainId==='31337'?'LOCAL MOCK STOCK · TEST CASH':'STOCK CLASSIFICATION UNVERIFIED'}{c.manifest?.chainId==='5042002'&&c.manifest.addresses.cash?.toLowerCase()==='0x3600000000000000000000000000000000000000'?' · ARC TESTNET USDC':''}</span>
       <span>NATIVE GAS (18 DECIMALS) · {amount(v.frame?.state.balances?.[v.account]?.nativeGas,18)}</span>
+      <label>ACTOR<select className={input} aria-label="Actor" value={v.wallet.actorKey} onChange={e=>c.chooseActor(e.target.value)}><option value="">SELECT ACTOR</option>{v.wallet.actors.map((a:any)=><option key={a.key} value={a.key}>{a.label}</option>)}</select></label>
+      <span data-provenance="expected-address">{v.wallet.expectedAddress?`EXPECTED ACCOUNT · ${v.wallet.expectedAddress}`:'EXPECTED ACCOUNT · SELECT AN ACTOR'}</span>
+      <label>WALLET<select className={input} aria-label="Wallet provider" value={v.wallet.providerId} onChange={e=>c.chooseProvider(e.target.value)}><option value="">SELECT WALLET</option>{v.wallet.providerOptions.map((p:any)=><option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
+      {v.wallet.providerOptions.length===0&&<span>NO WALLET DISCOVERED · INSTALL OR UNLOCK METAMASK OR RABBY</span>}
       <button className={button} onClick={()=>void c.run(()=>c.connect())}>{v.account?'RECONNECT WALLET':'CONNECT WALLET'}</button>
       <span data-provenance="address">{v.account??'No wallet connected'}</span>
+      <span data-provenance="network">{v.wallet.connected?`WALLET NETWORK · CHAIN ${v.wallet.chainId}`:`EXPECTED NETWORK · CHAIN ${v.wallet.expectedChainId??'—'} · NOT CONNECTED`}</span>
       <label>APPROVAL PURPOSE<select className={input} aria-label="Approval purpose" value={purpose} onChange={e=>setPurpose(e.target.value)}>{(role==='lender'?['deposit']:role==='buyer'?['offer']:['premium','repay','collateral','backing']).map(p=><option key={p}>{p}</option>)}</select></label>
       <label>EXACT TOKEN UNITS<input className={input} aria-label="Approval amount raw" inputMode="numeric" value={approval} onChange={e=>setApproval(e.target.value)}/></label>
       <button className={button} disabled={!v.ready} onClick={()=>void c.run(()=>c.send({approval:purpose,amount:approval}))}>APPROVE EXACT AMOUNT</button>
@@ -42,9 +48,9 @@ export function ActorTools({role}:{role:'borrower'|'buyer'|'lender'}){
         <pre className="whitespace-pre-wrap wrap-anywhere">{json({loanId:v.loanId,receiptId:v.receiptId,coverStatus:v.coverStatus,selected:v.selected,termsHashes:v.selected.map((id:string)=>v.frame?.state.termsHashes[id])})}</pre>
         <output className="wrap-anywhere" aria-label="Exact cover quote hash">{review}</output>
         {(v.coverOptions.length>0||v.showCoverPreview)&&<label>SESSION RECEIPT<select className={input} aria-label="Cover receipt" value={v.receiptId??''} onChange={v.onCover}>{v.quoteText&&v.selected.length>0&&<option value="">UNCONFIRMED PREVIEW</option>}{v.coverOptions.map((r:any)=><option key={r.id} value={r.id}>{r.label}</option>)}</select></label>}
-        <label>LOAN ACTION<select className={input} aria-label="Loan action" value={method} onChange={e=>c.set('loanMethod',e.target.value)}>{['borrow','repay','addCollateral','withdrawCollateral','liquidate','topUpBacking','finalizeHandoff'].map(m=><option key={m}>{m}</option>)}</select></label>
+        <label>LOAN ACTION<select className={input} aria-label="Loan action" value={method} onChange={e=>c.set('loanMethod',e.target.value)}>{['borrow','repay','addCollateral','withdrawCollateral','liquidate','topUpBacking','finalizeHandoff','settle','terminalSettle'].map(m=><option key={m}>{m}</option>)}</select></label>
         <label>EXACT ARGUMENT ARRAY · ENTER PRINCIPAL AND COLLATERAL FOR BORROW<textarea className={input} aria-label="Loan arguments" rows={3} value={args} onChange={e=>c.set('loanArgs',e.target.value)}/></label>
-        <span>{(abis.loanManager.find(x=>x.type==='function'&&x.name===method) as any)?.inputs.map((p:any)=>`${p.name}: ${p.type}${p.components?' · '+p.components.map((x:any)=>x.name+': '+x.type).join(' · '):''}`).join(' · ')}</span>
+        <span>{((method==='settle'||method==='terminalSettle'?abis.manager:abis.loanManager).find(x=>x.type==='function'&&x.name===method) as any)?.inputs.map((p:any)=>`${p.name}: ${p.type}${p.components?' · '+p.components.map((x:any)=>x.name+': '+x.type).join(' · '):''}`).join(' · ')}</span>
         <button className={button} disabled={!v.ready} onClick={()=>void c.run(()=>c.loanAction())}>SIGN LOAN ACTION</button>
       </>}
     </div>
