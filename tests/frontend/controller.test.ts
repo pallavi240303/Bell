@@ -16,7 +16,7 @@ test('review 4: refresh binds event boundary, keeps historical time, and clears 
 });
 test('review 5: claim units remain pending while recorded or paused and become delivered only after withdrawal',()=>{
   const c=new Controller(),account=`0x${'ab'.repeat(20)}`;c.wallet={account} as any;
-  c.frame={block:{number:1n,hash,timestamp:1n},state:{pool:{},book:{},claims:{'1':{owner:account,withdrawn:false,deliveryUnits:2000000000000000000n}},tokens:{stock:{paused:true}}}};
+  c.frame={block:{number:1n,hash,timestamp:1n},state:{pool:{},book:{},claims:{'1':{owner:account,receiptId:7n,withdrawn:false,deliveryUnits:2000000000000000000n}},tokens:{stock:{paused:true}}}};
   let claim=c.renderVals().claims[0];assert.equal(claim.unitsLabel,'PENDING UNITS');assert.equal(claim.worthFmt,'2');assert.notEqual(claim.reason,'Contract delivery recorded');
   c.frame.state.tokens.stock.paused=false;assert.equal(c.renderVals().claims[0].unitsLabel,'PENDING UNITS');
   c.frame.state.claims['1'].withdrawn=true;claim=c.renderVals().claims[0];assert.equal(claim.unitsLabel,'DELIVERED UNITS');assert.equal(claim.canWithdraw,false);

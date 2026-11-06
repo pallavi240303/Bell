@@ -7,7 +7,10 @@ import {readFileSync} from 'node:fs';
  * authentication (cookie required for /api) and a second origin that records any cookie it receives.
  * Needs a Playwright Chromium; it makes no wallet or chain requests.
  */
-const COOKIE_NAME='__Host-sbx-session';
+// This gateway is HTTP-only; use an owned test cookie rather than claiming
+// production HTTPS __Host- cookie attributes. Credential-mode checks below
+// still require the session and reject omitted/cross-origin credentials.
+const COOKIE_NAME='bell_owned_preview_session';
 async function listen(handler:Parameters<typeof createServer>[1]){
   const server:Server=createServer(handler);await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));
   return {server,origin:`http://localhost:${(server.address() as AddressInfo).port}`};
@@ -21,7 +24,7 @@ test('authenticated same-origin API reads succeed; cross-origin reads never carr
     res.setHeader('content-type','application/json');res.end('{"ok":true}');
   });
   try{
-    await context.addCookies([{name:COOKIE_NAME,value:'ok',url:gateway.origin}]);
+    await context.addCookies([{name:COOKIE_NAME,value:'ok',url:gateway.origin+'/',httpOnly:true,sameSite:'Strict'}]);
     await page.goto(gateway.origin+'/');
     const result=await page.evaluate(async(otherOrigin)=>{
       const status=async(url:string,credentials:RequestCredentials)=>{try{return (await fetch(url,{credentials,cache:'no-store'})).status;}catch{return 'error';}};
@@ -30,6 +33,7 @@ test('authenticated same-origin API reads succeed; cross-origin reads never carr
     expect(result.sameOrigin).toBe(200);
     expect(result.omit).toBe(403);
     expect(result.cross).toBe(200);
+    expect(seen.length).toBeGreaterThan(0);
     expect(seen.every(cookie=>cookie===undefined)).toBe(true);
     // The shipped transport uses the mode proven above and nothing else.
     const source=readFileSync(new URL('../../src/adapter/transport.ts',import.meta.url),'utf8');

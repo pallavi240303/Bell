@@ -39,6 +39,20 @@ Open **WALLET & EXACT INPUTS** on the existing borrower, buyer or lender page. S
 5. Deliver the close/reopen reports through the local CRE workflow. Choose `settle` using the session receipt ID; use `terminalSettle` only when the contract deadline permits it. The underlying loan ID and cover receipt ID are separate identifiers.
 6. Each actor approves their own transaction in MetaMask or Rabby. Record its public hash, wait for the canonical receipt, refresh and compare contract state/events. Withdraw claims and credits only from their owning actor.
 
+## Frontend transaction controls
+
+Use the same application for every role. The header **WALLET** button opens actor/provider setup; **CONNECT WALLET** then requests the selected extension. Verify the displayed expected public address yourself.
+
+- **LEND:** enter a USDC amount, choose **APPROVE SUPPLY USDC**, wait for confirmation, then **SUPPLY USDC**.
+- **BORROW / Alice:** choose the collateral asset, enter **Borrow amount** and **Collateral shares**, approve collateral, then **BORROW USDC**. This creates an ordinary loan without buying cover.
+- **BUYERS / Rahul and Meera:** each chooses their own shares, strike, premium and **Offer expiry (UTC)** after the session close, approves offer cash, then chooses **LOCK USDC · POST OFFER**. Repeat with the other actor/provider. Existing FREE offers remain separately editable through cancel/repost with a fresh nonce.
+- **BORROW / Alice:** **REFRESH CONTRACT STATE**, select the FREE whole lots, review their terms and premium, choose **APPROVE COVER PREMIUM**, then **SIGN COVER PURCHASE**. Cover attaches to the selected existing loan only during its cover window.
+- After the local CRE close/reopen reports, refresh Alice's page and choose **SETTLE COVER** for the selected cover receipt. Each buyer then refreshes their own page and chooses **WITHDRAW SHARES** when delivery is available. Paused or immature claims stay owed and cannot be withdrawn yet.
+
+Every financial action requests a separate wallet signature and displays its canonical transaction hash after confirmation. Refresh after another actor or the local operator changes chain state. Advanced raw inputs remain available but are unnecessary for this flow.
+
+A dash means that evidence or a position is unavailable; it is never replaced with a fabricated result. The position card shows actual collateral value, debt and accepted price evidence. Buyer claim charges and strikes come from matching accepted fill events. The comparison baseline stays unavailable until a real baseline is connected. If market readiness reports an expired session or stale reference, prepare fresh local CRE reports before signing; hosting alone does not create a market session, loan or offers.
+
 The frontend and backend never sign for any actor. CRE simulation reports are labelled synthetic and do not establish live DON deployment. Keep the real connected-wallet replay evidence separate from local test-wallet results.
 
 ## Wrong build preset: forge not found
