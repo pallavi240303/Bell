@@ -12,7 +12,7 @@ export function LendPage() {
           LEND · USDC POOL
         </span>
         <h1 className="m-0 text-[clamp(22px,_3.2vw,_34px)] font-normal">
-          Supply USDC. Covered loans repay you from cash locked in advance.
+          Supply USDC. The pool holds ordinary and session-covered loans.
         </h1>
       </div>
       <div className="grid grid-cols-[repeat(auto-fit,_minmax(min(100%,_260px),_1fr))] gap-6 border-t border-t-line border-b border-b-line py-5.5 px-0">
@@ -131,7 +131,7 @@ export function LendPage() {
           <div className="flex-1 bg-muted"></div>
         </div>
         <span className="text-[12px] leading-[1.6] text-muted text-pretty">
-          Pool assets and available liquidity come from contract reads. Redemption burns your pool shares and is subject to available cash.
+          Lenders bear ordinary credit risk. Active cover backs only its selected loan and session. Redemption burns pool shares and needs available cash.
         </span>
         {v.lend.hasRecv && (
           <>

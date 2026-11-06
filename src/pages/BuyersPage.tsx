@@ -23,12 +23,11 @@ export function BuyersPage() {
           </span>
           <label className="flex flex-col gap-1.5">
             <span className="text-[10px] tracking-[0.18em] text-muted">
-              ASSET
+              OFFER SHARE BASIS
             </span>
-            <select className="[font-family:inherit] text-[22px] bg-transparent text-ink border-0 border-current border-b border-b-line py-2 px-0 rounded-none">
-              <option>
-                {v.stockSymbol}
-              </option>
+            <select aria-label="Offer share basis" className="[font-family:inherit] text-[22px] bg-transparent text-ink border-0 border-current border-b border-b-line py-2 px-0 rounded-none" value={v.offerLoanId} onChange={v.onOfferLoan}>
+              <option value="">CHOOSE SHARE BASIS</option>
+              {v.offerLoanOptions.map((loan:any)=><option key={loan.id} value={loan.id}>{loan.label}</option>)}
             </select>
           </label>
           <label className="flex flex-col gap-1.5 relative">
@@ -97,7 +96,7 @@ export function BuyersPage() {
           {v.noClaims && (
             <>
               <span className="text-[13px] leading-[1.6] text-muted text-pretty">
-                No claims yet. A claim appears when a covered loan settles at the opening bell and you buy its shares.
+                No claims yet. Loan settlement or liquidation can create a claim. Shares remain pending until the owner withdraws.
               </span>
             </>
           )}

@@ -32,7 +32,7 @@ export function ControlPage() {
               {' '}BACK
             </button>
             <button className="[font-family:inherit] text-[12px] tracking-[0.16em] text-ink bg-transparent [background-image:linear-gradient(#3D3BF3,#3D3BF3)] [background-repeat:no-repeat] [background-size:0%_100%] border border-ink rounded-[10px] inline-flex items-center justify-center gap-2.5 py-3 px-4.5 cursor-pointer [transition:background-size_450ms_cubic-bezier(0.22,1,0.36,1),_color_450ms] hover:[background-size:100%_100%] hover:text-white hover:border-indigo active:[transform:translateY(1px)]" onClick={v.onAdvance}>
-              REFRESH SNAPSHOT{' '}
+              REFRESH{' '}
               <Icon name="arrow-right" />
             </button>
           </div>
@@ -53,20 +53,20 @@ export function ControlPage() {
         </section>
         <section className="relative border border-line-soft bg-panel p-6 flex flex-col gap-5 min-w-0 rounded-[16px] before:content-[''] before:absolute before:-top-0.25 before:-left-0.25 before:w-2.5 before:h-2.5 before:border-t before:border-t-ink before:border-l before:border-l-ink before:pointer-events-none after:content-[''] after:absolute after:-bottom-0.25 after:-right-0.25 after:w-2.5 after:h-2.5 after:border-b after:border-b-ink after:border-r after:border-r-ink after:pointer-events-none" data-spot="rgba(61,59,243,0.10)" aria-label="Stock price">
           <span className="text-[11px] tracking-[0.2em] text-muted">
-            ACCEPTED BENCHMARK · {v.bell.pxFmt}
+            LATEST REFERENCE · {v.controlReferenceFmt}
           </span>
           <label className="flex flex-col gap-1.5 relative">
             <span className="text-[10px] tracking-[0.18em] text-muted">
               REFRESH PRICE
             </span>
-            <input className="w-full [font-family:inherit] text-[26px] font-light text-ink bg-transparent border-0 border-current border-b border-b-line pt-2 pr-17.5 pb-2 pl-0 outline-none [caret-color:#EDECE8] [caret-shape:block] rounded-none focus:[border-bottom-color:#EDECE8] focus:[background-image:repeating-linear-gradient(0deg,_rgba(255,255,255,0.06)_0px,_rgba(255,255,255,0.06)_1px,_transparent_1px,_transparent_3px)]" inputMode="decimal" placeholder="0.00" value={v.bell.pxFmt} readOnly />
+            <input className="w-full [font-family:inherit] text-[26px] font-light text-ink bg-transparent border-0 border-current border-b border-b-line pt-2 pr-17.5 pb-2 pl-0 outline-none [caret-color:#EDECE8] [caret-shape:block] rounded-none focus:[border-bottom-color:#EDECE8] focus:[background-image:repeating-linear-gradient(0deg,_rgba(255,255,255,0.06)_0px,_rgba(255,255,255,0.06)_1px,_transparent_1px,_transparent_3px)]" inputMode="decimal" placeholder="0.00" value={v.controlReferenceFmt} readOnly />
             <span className="absolute right-0 bottom-3.5 text-[11px] tracking-[0.16em] text-muted pointer-events-none">
               USDC
             </span>
           </label>
           <div className="flex flex-wrap gap-2.5">
             <button className="[font-family:inherit] text-[12px] tracking-[0.16em] text-ink bg-transparent [background-image:linear-gradient(#3D3BF3,#3D3BF3)] [background-repeat:no-repeat] [background-size:0%_100%] border border-ink rounded-[10px] inline-flex items-center justify-center gap-2.5 py-3 px-4.5 cursor-pointer [transition:background-size_450ms_cubic-bezier(0.22,1,0.36,1),_color_450ms] hover:[background-size:100%_100%] hover:text-white hover:border-indigo active:[transform:translateY(1px)]" onClick={v.onSetPrice}>
-              SET PRICE
+              REFRESH PRICE
             </button>
             <button className="[font-family:inherit] text-[12px] tracking-[0.16em] text-ink bg-transparent [background-image:linear-gradient(#3D3BF3,#3D3BF3)] [background-repeat:no-repeat] [background-size:0%_100%] border border-ink rounded-[10px] inline-flex items-center justify-center gap-2.5 py-3 px-4.5 cursor-pointer [transition:background-size_450ms_cubic-bezier(0.22,1,0.36,1),_color_450ms] hover:[background-size:100%_100%] hover:text-white hover:border-indigo active:[transform:translateY(1px)]" onClick={v.onClearPrice}>
               REFRESH EVIDENCE
@@ -92,7 +92,7 @@ export function ControlPage() {
             Reads the canonical snapshot. Report forwarding, token controls and clock changes remain outside the browser.
           </span>
           <button className="[font-family:inherit] text-[12px] tracking-[0.16em] text-loss bg-transparent [background-image:linear-gradient(#DC2626,#DC2626)] [background-repeat:no-repeat] [background-size:0%_100%] border border-loss-deep rounded-[10px] py-3 px-4.5 cursor-pointer [transition:background-size_450ms_cubic-bezier(0.22,1,0.36,1),_color_450ms] hover:[background-size:100%_100%] hover:text-white hover:border-indigo active:[transform:translateY(1px)]" onClick={v.onReset}>
-            REFRESH SNAPSHOT
+            REFRESH
           </button>
         </section>
       </div>

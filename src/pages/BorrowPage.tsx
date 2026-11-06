@@ -17,14 +17,14 @@ export function BorrowPage() {
           Backed before the bell.
         </h1>
         <p className="m-0 text-[14px] leading-[1.6] text-muted max-w-170 text-pretty">
-          Choose exact whole buyer lots and review your consent. One wallet transaction reserves cover and funds the loan atomically.
+          Borrow an ordinary loan through wallet inputs. Choose whole buyer lots to attach session cover to that same loan.
         </p>
       </div>
       <div className="grid grid-cols-[repeat(auto-fit,_minmax(min(100%,_420px),_1fr))] gap-6">
         <section className="relative border border-line-soft bg-panel p-6 flex flex-col gap-5.5 min-w-0 rounded-[16px] before:content-[''] before:absolute before:-top-0.25 before:-left-0.25 before:w-2.5 before:h-2.5 before:border-t before:border-t-ink before:border-l before:border-l-ink before:pointer-events-none after:content-[''] after:absolute after:-bottom-0.25 after:-right-0.25 after:w-2.5 after:h-2.5 after:border-b after:border-b-ink after:border-r after:border-r-ink after:pointer-events-none" data-spot="rgba(61,59,243,0.10)" aria-label="Your position">
           <div className="flex justify-between items-center gap-3 flex-wrap">
             <span className="text-[11px] tracking-[0.2em] text-muted">
-              {v.receiptOptions.length>1 ? <select aria-label="Receipt" className="bg-transparent text-[11px] [font-family:inherit] max-w-[210px]" value={v.receiptId} onChange={v.onReceipt}>{v.receiptOptions.map((r:any)=><option key={r.id} value={r.id}>{r.label}</option>)}</select> : 'YOUR POSITION'}
+              {v.receiptOptions.length>1 ? <select aria-label="Loan" className="bg-transparent text-[11px] [font-family:inherit] max-w-[210px]" value={v.loanId} onChange={v.onReceipt}>{v.receiptOptions.map((r:any)=><option key={r.id} value={r.id}>{r.label}</option>)}</select> : 'YOUR POSITION'}
             </span>
             <span className="text-[11px] tracking-[0.18em] py-1.5 px-2.5 rounded-[10px]" style={{ border: `1px solid ${v.bell.badgeColor}`, color: v.bell.badgeColor }}>
               {v.bell.badge}
@@ -122,14 +122,14 @@ export function BorrowPage() {
               </div>
             </div>
             <span className="text-[12px] text-muted leading-[1.6]">
-              A price can gap while the market is closed. Locked cash can't.
+              {v.coverStatus} · Only an active session cover locks buyer cash for this loan.
             </span>
           </div>
         </section>
         <section className="relative border border-line-soft bg-panel p-6 flex flex-col gap-5.5 min-w-0 rounded-[16px] before:content-[''] before:absolute before:-top-0.25 before:-left-0.25 before:w-2.5 before:h-2.5 before:border-t before:border-t-ink before:border-l before:border-l-ink before:pointer-events-none after:content-[''] after:absolute after:-bottom-0.25 after:-right-0.25 after:w-2.5 after:h-2.5 after:border-b after:border-b-ink after:border-r after:border-r-ink after:pointer-events-none" data-spot="rgba(61,59,243,0.10)" aria-label="Cover">
           <div className="flex justify-between gap-3 flex-wrap">
             <span className="text-[11px] tracking-[0.2em] text-muted">
-              COVER BREAKDOWN
+              {v.breakdownLabel}
             </span>
             <span className="text-[11px] tracking-[0.16em] text-muted">
               CONSENT REF {v.refCloseFmt}
@@ -138,7 +138,7 @@ export function BorrowPage() {
           <div className="flex flex-col text-[14px]">
             <div className="flex justify-between py-2.5 px-0 border-b border-b-line-soft">
               <span className="text-muted">
-                DEBT
+                {v.quoteDebtLabel}
               </span>
               <span>
                 {v.quoteDebtFmt}
@@ -162,7 +162,7 @@ export function BorrowPage() {
             </div>
             <div className="flex justify-between pt-3.5 px-0 pb-2.5 [border-top:3px_double_#34343D] text-[18px]">
               <span>
-                RECEIPT CASH LOCKED
+                {v.needLabel}
               </span>
               <span>
                 {v.needFmt}
@@ -181,14 +181,14 @@ export function BorrowPage() {
             {v.buyOk && (
               <>
                 <button className="[font-family:inherit] text-[13px] tracking-[0.18em] text-ink bg-transparent [background-image:linear-gradient(#3D3BF3,#3D3BF3)] [background-repeat:no-repeat] [background-size:0%_100%] border border-ink rounded-[10px] inline-flex items-center justify-center gap-2.5 py-4 px-5 cursor-pointer [transition:background-size_450ms_cubic-bezier(0.22,1,0.36,1),_color_450ms] hover:[background-size:100%_100%] hover:text-white hover:border-indigo active:[transform:translateY(1px)]" onClick={v.onBuy}>
-                  SIGN ATOMIC BORROW
+                  SIGN COVER PURCHASE
                 </button>
               </>
             )}
             {v.buyNo && (
               <>
                 <button className="[font-family:inherit] text-[13px] tracking-[0.18em] text-muted bg-transparent border border-line rounded-[10px] py-4 px-5 cursor-not-allowed" disabled>
-                  SIGN ATOMIC BORROW
+                  SIGN COVER PURCHASE
                 </button>
               </>
             )}
@@ -258,7 +258,7 @@ export function BorrowPage() {
               </span>
               <span></span>
               <span>
-                {v.feesFmt}
+                {v.quotePremiumFmt}
               </span>
               <span></span>
               <span>

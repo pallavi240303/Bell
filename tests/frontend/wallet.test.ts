@@ -23,7 +23,7 @@ test('verified deposit simulates, requests one wallet transaction, and refreshes
   assert.ok(x.calls.findIndex(c=>c.simulate)<x.calls.findIndex(c=>c.method==='eth_sendTransaction'));
 });
 test('all six approval purposes encode the exact token and spender',async()=>{
-  const x=await setup();for(const [purpose,token,spender]of [['deposit','cash','pool'],['offer','cash','book'],['premium','cash','book'],['repay','cash','manager'],['collateral','stock','vault'],['backing','stock','vault']]){
+  const x=await setup();for(const [purpose,token,spender]of [['deposit','cash','pool'],['offer','cash','book'],['premium','cash','book'],['repay','cash','loanManager'],['collateral','stock','vault'],['backing','stock','vault']]){
     const expected=x.client.expected({approval:purpose!,amount:'23'});assert.equal(expected.to,x.manifest.addresses[token!]);
     assert.equal(expected.data,encodeFunctionData({abi:x.abis.cash,functionName:'approve',args:[x.manifest.addresses[spender!] as any,23n]}));
   }
@@ -60,3 +60,5 @@ test('wallet rejection is propagated and account changes during receipt wait inv
   const x=await setup();x.provider.request=async()=>{throw Object.assign(Error('User rejected'),{code:4001});};await assert.rejects(()=>x.client.send(x.intent,x.unsigned,async()=>{}),/rejected/);
   const y=await setup();let refreshed=false;y.rpc.waitForTransactionReceipt=async()=>{y.listeners.accountsChanged!([address(77)]);return {status:'success',blockNumber:7n,blockHash:hash};};await assert.rejects(()=>y.client.send(y.intent,y.unsigned,async()=>{refreshed=true;}),/changed/);assert.equal(refreshed,false);
 });
+
+test('removed manager loan methods cannot be prepared by a browser',async()=>{const x=await setup();for(const method of ['borrowWithCover','repay','addCollateral','withdrawCollateral','liquidate','topUpBacking','finalizeHandoff'])assert.throws(()=>x.client.expected({contract:'manager',method,args:[]}));});
