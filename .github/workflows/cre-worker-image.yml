@@ -1,0 +1,112 @@
+name: CRE worker image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile.worker
+      - Dockerfile.worker.dockerignore
+      - compose.worker.yaml
+      - services/cre-worker/**
+      - cre/bell-market-event/**
+      - deployments/arc-optional-cover.json
+      - package.json
+      - package-lock.json
+      - .github/workflows/cre-worker-image.yml
+  pull_request:
+    paths:
+      - Dockerfile.worker
+      - Dockerfile.worker.dockerignore
+      - services/cre-worker/**
+      - cre/bell-market-event/**
+      - deployments/arc-optional-cover.json
+      - package.json
+      - package-lock.json
+      - .github/workflows/cre-worker-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cre-worker-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/pallavi240303/bell-cre-worker
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.22.0
+      - uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1
+        with:
+          version: v1.7.1
+          cache: false
+      - name: Build workflow, run worker tests, build linux image
+        run: docker build --platform linux/amd64 --file Dockerfile.worker --target runtime --tag bell-cre-worker:test .
+      - name: Exercise image CRE workflow against owned Anvil and verify canonical acceptance
+        env:
+          BELL_WORKER_NATIVE_TEST: '1'
+          BELL_TEST_CRE_IMAGE: bell-cre-worker:test
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm --prefix cre/bell-market-event ci --ignore-scripts --no-audit --no-fund
+          forge build
+          node --import tsx --test services/cre-worker/test/native.test.ts
+      - name: Check tools, image boundary and worker lifecycle without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(docker image inspect bell-cre-worker:test --format '{{.Architecture}}')" = amd64
+          test "$(docker image inspect bell-cre-worker:test --format '{{.Config.User}}')" = node
+          docker run --rm --entrypoint cre bell-cre-worker:test version | grep -F 'v1.39.0'
+          docker run --rm --entrypoint cre bell-cre-worker:test workflow simulate --help > /dev/null
+          docker run --rm --entrypoint node bell-cre-worker:test --input-type=module -e '
+            import {readFileSync,existsSync} from "node:fs";
+            import assert from "node:assert/strict";
+            assert.equal(readFileSync("/app/workflow.wasm").subarray(0,4).toString("hex"),"0061736d");
+            for (const path of ["/app/.env","/app/.git","/app/src","/app/contracts","/app/engine","/app/services/keeper","/app/services/cre-worker/test","/app/deployments/runs"]) assert.equal(existsSync(path),false,path);
+            assert.equal(process.getuid(),1000);
+          '
+          mkdir -p "$RUNNER_TEMP/worker-jobs"
+          docker volume create bell-cre-worker-smoke
+          trap 'docker rm -f bell-cre-worker-smoke >/dev/null 2>&1 || true; docker volume rm bell-cre-worker-smoke >/dev/null 2>&1 || true' EXIT
+          docker run --detach --name bell-cre-worker-smoke --read-only --cap-drop ALL --security-opt no-new-privileges:true --mount type=volume,source=bell-cre-worker-smoke,target=/data --mount type=bind,source="$RUNNER_TEMP/worker-jobs",target=/jobs,readonly bell-cre-worker:test
+          for attempt in {1..20}; do
+            if docker exec bell-cre-worker-smoke node --import tsx services/cre-worker/main.ts --health; then break; fi
+            sleep 1
+          done
+          docker exec bell-cre-worker-smoke node --import tsx services/cre-worker/main.ts --health
+          docker stop --time 120 bell-cre-worker-smoke > /dev/null
+          test "$(docker inspect bell-cre-worker-smoke --format '{{.State.ExitCode}}')" = 0
+          docker rm bell-cre-worker-smoke > /dev/null
+          docker run --rm --read-only --mount type=volume,source=bell-cre-worker-smoke,target=/data --mount type=bind,source="$RUNNER_TEMP/worker-jobs",target=/jobs,readonly bell-cre-worker:test --once
+      - name: Publish tested image
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository_owner == 'pallavi240303'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          docker tag bell-cre-worker:test "$IMAGE:$GITHUB_SHA"
+          docker tag bell-cre-worker:test "$IMAGE:latest"
+          docker push "$IMAGE:$GITHUB_SHA" | tee "$RUNNER_TEMP/worker-push.txt"
+          docker push "$IMAGE:latest"
+          digest=$(sed -n 's/.*digest: \(sha256:[a-f0-9]*\).*/\1/p' "$RUNNER_TEMP/worker-push.txt" | tail -1)
+          test -n "$digest"
+          docker pull "$IMAGE@$digest"
+          docker run --rm --entrypoint cre "$IMAGE@$digest" version
+          printf 'Published `%s@%s` (linux/amd64).\n' "$IMAGE" "$digest" >> "$GITHUB_STEP_SUMMARY"
