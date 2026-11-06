@@ -66,9 +66,15 @@ test('environment example is empty and runtime outputs are ignored', () => {
 });
 
 test('unimplemented verification stages fail with an actionable message', () => {
-  for (const stage of ['test:integration', 'test:e2e', 'verify:replay']) {
+  for (const stage of ['test:integration', 'test:e2e']) {
     const result = run('npm', ['run', stage]);
     assert.equal(result.status, 1, `${stage}: ${result.stdout}${result.stderr}`);
     assert.match(result.stderr, /not implemented.*package/i);
   }
+});
+
+test('replay verification invokes the implemented keeper runner', () => {
+  const manifest = JSON.parse(readFileSync(`${root}package.json`, 'utf8'));
+  assert.equal(manifest.scripts['verify:replay'], 'node --import tsx services/keeper/cli.ts replay');
+  assert.ok(existsSync(`${root}services/keeper/replay.ts`));
 });

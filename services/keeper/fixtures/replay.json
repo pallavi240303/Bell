@@ -1,0 +1,33 @@
+{
+  "label": "local-input-driven-cover",
+  "actors": {
+    "owner": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+    "lender": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+    "borrower": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+    "buyerA": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+    "buyerB": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65",
+    "keeper": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc"
+  },
+  "assetLabel": "STOCK",
+  "sessionLabel": "SESSION",
+  "policyLabel": "POLICY",
+  "config": {"stockTokenDecimals":"18","cashTokenDecimals":"6","originationLtvBps":"6000","targetLtvBps":"6500","triggerLtvBps":"7500","rateNumerator":"1","rateDenominator":"18446744073709551615","maxFills":"8","maxActiveReceipts":"32","supportedCorporateActions":"6"},
+  "effectiveAt":"1001",
+  "lenderSupply":"10000000000",
+  "cashFunding":"100000000000",
+  "stockFunding":"1000000000000000000000",
+  "approvalAmount":"1000000000000000000000000",
+  "consent": {"borrowerNonce":"0","expiry":"1499","configVersion":"1","principal":"499999999","collateralShares":"10000000000000000000","referencePrice":"100000000","snapshotMultiplierNumerator":"1","snapshotMultiplierDenominator":"1","totalPremium":"200","totalOfferShares":"10000000000000000000","minSettlementDeadline":"2000","maxSettlementDeadline":"2000"},
+  "offerCommon":{"snapshotShares":"5000000000000000000","premium":"100","maxBorrowerLtvBps":"6000","referencePrice":"100000000","maxReferenceDeviationBps":"10000","expiry":"2000"},
+  "reports":[
+    {"reference":"local-supplied-schedule","kind":"1","observedAt":"1000","validUntil":"2000","scheduledOpen":"1200","scheduledClose":"1500","benchmarkPrice":"0","multiplierNumerator":"0","multiplierDenominator":"0","primarySourceLabel":"PRIMARY","secondarySourceLabel":""},
+    {"reference":"local-supplied-close","kind":"2","observedAt":"1500","validUntil":"2500","scheduledOpen":"1200","scheduledClose":"1500","benchmarkPrice":"0","multiplierNumerator":"0","multiplierDenominator":"0","primarySourceLabel":"PRIMARY","secondarySourceLabel":""},
+    {"reference":"local-supplied-reopen","kind":"3","observedAt":"1501","validUntil":"1601","scheduledOpen":"1200","scheduledClose":"1500","benchmarkPrice":"50000000","multiplierNumerator":"1","multiplierDenominator":"1","primarySourceLabel":"primary","secondarySourceLabel":"secondary"}
+  ],
+  "scenarios":[
+    {"id":"buyer-base","buyers":[{"actor":"buyerA","strike":"100000000","nonce":"1"},{"actor":"buyerB","strike":"90000000","nonce":"2"}],"weightedStrike":"95000000","path":"normal-then-terminal"},
+    {"id":"buyer-higher","buyers":[{"actor":"buyerA","strike":"110000000","nonce":"1"},{"actor":"buyerB","strike":"90000000","nonce":"2"}],"weightedStrike":"100000000","path":"normal-then-terminal"},
+    {"id":"buyer-stronger","buyers":[{"actor":"buyerA","strike":"120000000","nonce":"1"},{"actor":"buyerB","strike":"100000000","nonce":"2"}],"weightedStrike":"110000000","path":"normal-then-terminal"}
+  ],
+  "actions":[{"at":"1501","method":"settle"},{"at":"2000","method":"terminalSettle"}]
+}
