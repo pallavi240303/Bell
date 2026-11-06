@@ -150,6 +150,17 @@ export async function prepareReplay(job:Job,client:any,rpc:string,deployment:Dep
  return {config:c,expected:{reportHash:d.reportHash,payload:encodeReport(r),nonce:String(r.nonce),previousStateHash:r.previousStateHash,assetId:r.assetId,sessionId:r.sessionId,kind:r.kind,primarySourceHash:r.primarySourceHash,secondarySourceHash:r.secondarySourceHash},identity};
 }
 
+// Only fixed categories may leave the child-output boundary; never raw errors.
+export function classifyCLIError(error:unknown):string{
+ const e=error as {stdout?:unknown;stderr?:unknown};
+ const text=[e?.stdout,e?.stderr].filter(v=>typeof v==='string').join('\n').toLowerCase();
+ if(/authentication required|not logged in|no cre_api_key|unauthorized|invalid api key|status code: 401/.test(text))return 'CLI_AUTH_REQUIRED';
+ if(/forbidden|status code: 403/.test(text))return 'CLI_AUTH_FORBIDDEN';
+ if(/validation error|configpath|workflowpath|no such file or directory/.test(text))return 'CLI_SETTINGS_INVALID';
+ if(/tenant context|registry manifest/.test(text))return 'CLI_TENANT_CONTEXT_FAILED';
+ if(/connection refused|rpc health check failed/.test(text))return 'CLI_RPC_UNAVAILABLE';
+ return 'CLI_EXECUTION_FAILED';
+}
 export async function nativeCLI(f:Frozen,directory:string,secrets:Record<string,string>,options:{binary?:string;wasm?:string;broadcast?:boolean;signal?:AbortSignal;workflowPath?:string}={}):Promise<{submitted:boolean;expected?:Frozen['expected'];quote?:Frozen['quote'];transactionHash?:Hex}>{
  const envPath=join(directory,'runtime-'+randomUUID()+'.env'),configPath=join(directory,'config.json');
  const config=f.config,wasm=options.wasm??'/app/workflow.wasm';
@@ -162,7 +173,7 @@ export async function nativeCLI(f:Frozen,directory:string,secrets:Record<string,
   await writeFile(envPath,Object.entries(secrets).map(([k,v])=>{if(!/^[A-Z_]+$/.test(k)||/[\r\n]/.test(v))throw Error('RUNTIME_SECRET_INVALID');return `${k}=${v}`;}).join('\n')+'\n',{mode:0o600,flag:'wx'});
   const args=['workflow','simulate',directory,'--project-root',directory,'--target','local-settings','--config','config.json','--wasm',wasm,'--limits','default','--non-interactive','--trigger-index','0','--env',envPath,'--public-env','/dev/null',...(options.broadcast?['--broadcast']:[])];
   let stdout:string,stderr:string;
-  try{({stdout,stderr}=await runChild(options.binary??'cre',args,directory,{PATH:process.env.PATH??'/usr/local/bin:/usr/bin:/bin',HOME:process.env.HOME??directory,TMPDIR:process.env.TMPDIR??directory,...(secrets.CRE_API_KEY?{CRE_API_KEY:secrets.CRE_API_KEY}:{})},options.signal));}catch{throw Error('CLI_EXECUTION_FAILED');}
+  try{({stdout,stderr}=await runChild(options.binary??'cre',args,directory,{PATH:process.env.PATH??'/usr/local/bin:/usr/bin:/bin',HOME:process.env.HOME??directory,TMPDIR:process.env.TMPDIR??directory,...(secrets.CRE_API_KEY?{CRE_API_KEY:secrets.CRE_API_KEY}:{})},options.signal));}catch(error){throw Error(classifyCLIError(error));}
   // No raw process/provider output is written to disk or sent to logs.
   return parseNativeResult(f,stdout+'\n'+stderr,BigInt(Math.floor(Date.now()/1000)));
  }finally{await unlink(envPath).catch(()=>{});}

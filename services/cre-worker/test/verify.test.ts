@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {keccak256,toHex,encodeFunctionData,encodeEventTopics,encodeAbiParameters,parseAbiParameters} from 'viem';
 import {fixture} from '../../../cre/bell-market-event/tests/fixtures.ts';
-import {nativeCLI,checkReceipt,eventAbi,forwarderAbi,learnQuoteResult,validateQuotePayload,parseNativeResult} from '../verify.ts';
+import {nativeCLI,checkReceipt,eventAbi,forwarderAbi,learnQuoteResult,validateQuotePayload,parseNativeResult,classifyCLIError} from '../verify.ts';
 import {decide,encodeReport,configurationHash} from '../../../cre/bell-market-event/src/core.ts';
 
 test('native child uses frozen config and private runtime file and removes secrets even on exit failure',async()=>{
@@ -57,4 +57,8 @@ test('quote result learning binds native config hash, nonce and both source iden
 });
 test('signal cancellation waits for the native child to exit before returning control',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'bell-worker-signal-'));try{const binary=join(dir,'cre'),ready=join(dir,'ready'),exited=join(dir,'exited');await writeFile(binary,`#!/usr/bin/env node\nconst fs=require('fs');process.on('SIGTERM',()=>setTimeout(()=>{fs.writeFileSync(${JSON.stringify(exited)},'yes');process.exit(0)},80));fs.writeFileSync(${JSON.stringify(ready)},'yes');setInterval(()=>{},1000);`);await chmod(binary,0o700);const controller=new AbortController(),promise=nativeCLI({config:fixture().config,expected:{},identity:{rpc:'http://127.0.0.1:1'}} as any,dir,{}, {binary,signal:controller.signal});const rejection=assert.rejects(promise,/CLI_EXECUTION_FAILED/);for(let i=0;i<100;i++){try{await readFile(ready);break;}catch{await delay(10);}}controller.abort();await rejection;assert.equal(await readFile(exited,'utf8'),'yes');}finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('CLI diagnostics expose fixed categories and never untrusted output',()=>{
+ for(const [text,expected] of [['authentication required: private-value','CLI_AUTH_REQUIRED'],['validation error ConfigPath private-value','CLI_SETTINGS_INVALID'],['private-value','CLI_EXECUTION_FAILED']])assert.equal(classifyCLIError({stdout:text,stderr:''}),expected);
 });
