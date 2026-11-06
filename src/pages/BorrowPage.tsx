@@ -24,7 +24,7 @@ export function BorrowPage() {
         <section className="relative border border-line-soft bg-panel p-6 flex flex-col gap-5.5 min-w-0 rounded-[16px] before:content-[''] before:absolute before:-top-0.25 before:-left-0.25 before:w-2.5 before:h-2.5 before:border-t before:border-t-ink before:border-l before:border-l-ink before:pointer-events-none after:content-[''] after:absolute after:-bottom-0.25 after:-right-0.25 after:w-2.5 after:h-2.5 after:border-b after:border-b-ink after:border-r after:border-r-ink after:pointer-events-none" data-spot="rgba(61,59,243,0.10)" aria-label="Your position">
           <div className="flex justify-between items-center gap-3 flex-wrap">
             <span className="text-[11px] tracking-[0.2em] text-muted">
-              YOUR POSITION
+              {v.receiptOptions.length>1 ? <select aria-label="Receipt" className="bg-transparent text-[11px] [font-family:inherit] max-w-[210px]" value={v.receiptId} onChange={v.onReceipt}>{v.receiptOptions.map((r:any)=><option key={r.id} value={r.id}>{r.label}</option>)}</select> : 'YOUR POSITION'}
             </span>
             <span className="text-[11px] tracking-[0.18em] py-1.5 px-2.5 rounded-[10px]" style={{ border: `1px solid ${v.bell.badgeColor}`, color: v.bell.badgeColor }}>
               {v.bell.badge}
@@ -104,7 +104,7 @@ export function BorrowPage() {
             <div className="flex flex-col gap-2">
               <div className="flex justify-between text-[12px] tracking-[0.12em]">
                 <span>
-                  BOOK CASH LOCKED
+                  RECEIPT CASH LOCKED
                 </span>
                 <span>
                   <span className="text-muted">
@@ -162,7 +162,7 @@ export function BorrowPage() {
             </div>
             <div className="flex justify-between pt-3.5 px-0 pb-2.5 [border-top:3px_double_#34343D] text-[18px]">
               <span>
-                BOOK BOOK CASH LOCKED
+                RECEIPT CASH LOCKED
               </span>
               <span>
                 {v.needFmt}
@@ -243,7 +243,7 @@ export function BorrowPage() {
                   <span>
                     {q.shFmt}
                   </span>
-                  <span>
+                  <span title={`Immutable capacity ${q.capacityFmt} · current locked cash ${q.cashFmt}`}>
                     {q.cashFmt}
                   </span>
                   <span className="text-right text-[10px] tracking-[0.14em]" style={{ color: q.color }}>

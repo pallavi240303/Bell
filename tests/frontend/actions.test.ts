@@ -3,7 +3,21 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {quoteHash as referenceHash} from '../../engine/quote.ts';
 import {argsFor} from '../../services/keeper/abi.ts';
+import {Controller} from '../../src/state/controller.ts';
 const hash=(n:string)=>`0x${n.repeat(64)}`;
+test('review 1: post and edit validate the same complete visible terms before any cancellation',async()=>{
+  const input=JSON.parse(readFileSync('services/keeper/fixtures/replay.json','utf8'));
+  const c=new Controller(),calls:any[]=[];
+  c.send=async(i:any)=>{calls.push(i);return {} as any;};
+  c.frame={block:{number:1n,hash:hash('1') as any,timestamp:1n},state:{offers:{lot:{status:1n,terms:{nonce:1n}}}}};
+  c.termsText=JSON.stringify({...input.offerCommon,assetId:hash('1'),policyHash:hash('2'),snapshotShares:'1000000000000000000',strike:'100000000',premium:'1000000',nonce:'2'});
+  c.fShares='5';c.fPct='120';c.fFee='3';await c.post();await c.edit('lot');
+  assert.deepEqual(calls[0].args,calls[2].args);
+  assert.equal(calls[2].args[0].snapshotShares,'5000000000000000000');assert.equal(calls[2].args[0].strike,'120000000');assert.equal(calls[2].args[0].premium,'3000000');
+  for(const bad of [{...JSON.parse(c.termsText),expiry:true},{...JSON.parse(c.termsText),assetId:'0x12'},{nonce:'3'}]){
+    c.termsText=JSON.stringify(bad);calls.length=0;await assert.rejects(()=>c.edit('lot'));assert.equal(calls.length,0);
+  }
+});
 test('borrow bundle preserves caller selected order, exact terms hashes, and one atomic calldata intent',async()=>{
   const m=await import('../../src/adapter/actions.ts').catch(()=>null);assert.ok(m,'exact actor intents required');
   assert.throws(()=>m.borrowIntent({},[],[],hash('a')),/one to eight/);

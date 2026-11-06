@@ -6,14 +6,14 @@ import {artifact,contracts,argsFor} from '../../services/keeper/abi.ts';
 import {snapshot} from '../../services/keeper/state.ts';
 import {prepareActor} from '../../services/keeper/transactions.ts';
 import {bindReport} from '../../services/keeper/replay.ts';
-import {json} from '../../services/keeper/types.ts';
+import {json,integers} from '../../services/keeper/types.ts';
 const zero=`0x${'0'.repeat(64)}` as Hex;
 export async function harness(seedOffers=true){
   const node=await localNode(),{deployment:d}=await deployLocal(node),a=d.addresses;
   const input=JSON.parse(readFileSync('services/keeper/fixtures/replay.json','utf8')),actors=input.actors as Record<string,Address>;
   const logs:any[]=[],ids:Hex[]=[];let account=actors.borrower!;const sends:any[]=[];
-  const record=(receipt:any)=>{for(const log of receipt.logs){const key=Object.keys(a).find(k=>a[k]!.toLowerCase()===log.address.toLowerCase());if(key)try{const decoded:any=decodeEventLog({abi:artifact(contracts[key]!).abi,data:log.data,topics:log.topics});logs.push({...log,decoded});if(decoded.eventName==='OfferPosted')ids.push(decoded.args.offerId);}catch{}}};
-  const send=async(from:Address,c:string,method:string,args:any[])=>{const receipt=await node.send(from,a[c]!,encodeFunctionData({abi:artifact(contracts[c]!).abi,functionName:method,args}));record(receipt);return receipt;};
+  const record=async(receipt:any)=>{const block=await node.client.getBlock({blockNumber:receipt.blockNumber});for(const log of receipt.logs){const key=Object.keys(a).find(k=>a[k]!.toLowerCase()===log.address.toLowerCase());if(key)try{const decoded:any=decodeEventLog({abi:artifact(contracts[key]!).abi,data:log.data,topics:log.topics});logs.push(integers({...log,blockTimestamp:block.timestamp,decoded}));if(decoded.eventName==='OfferPosted')ids.push(decoded.args.offerId);}catch{}}};
+  const send=async(from:Address,c:string,method:string,args:any[])=>{const receipt=await node.send(from,a[c]!,encodeFunctionData({abi:artifact(contracts[c]!).abi,functionName:method,args}));await record(receipt);return receipt;};
   const read=async(c:string,method:string,args:any[]=[])=>node.client.readContract({address:a[c]!,abi:artifact(contracts[c]!).abi,functionName:method,args}) as Promise<any>;
   const asset=keccak256(toHex(input.assetLabel)),session=keccak256(toHex(input.sessionLabel)),policy=keccak256(toHex(input.policyLabel));
   const config=argsFor('AssetRegistry','scheduleAssetConfig',[asset,{...input.config,assetToken:a.stock},input.effectiveAt])[1];
@@ -30,11 +30,11 @@ export async function harness(seedOffers=true){
   const observe=()=>snapshot(node.client,d,Object.values(actors),ids,undefined,logs);
   const attach=async(page:Page,role='borrower')=>{
     account=actors[role]!;
-    await page.route('**/api/**',async route=>{try{const url=new URL(route.request().url());let value:unknown;if(url.pathname==='/api/manifest')value=d;else if(url.pathname==='/api/state')value=await observe();else if(url.pathname==='/api/events')value=logs;else if(url.pathname==='/api/prepare')value=await prepareActor(d,(await observe()).block,route.request().postDataJSON(),node.client);else throw Error('Unallowed browser route');await route.fulfill({contentType:'application/json',body:json(value)});}catch{await route.fulfill({status:400,body:'{}'});}});
+    await page.route('**/api/**',async route=>{try{const url=new URL(route.request().url());let value:unknown;if(url.pathname==='/api/manifest')value=d;else if(url.pathname==='/api/state')value=await observe();else if(url.pathname==='/api/events'){const block=await node.client.getBlock({blockNumber:BigInt(url.searchParams.get('blockNumber')!)});if(block.hash!==url.searchParams.get('blockHash'))throw Error('replaced boundary');value={block:{number:block.number,hash:block.hash,timestamp:block.timestamp},events:logs.filter(l=>l.blockNumber<=block.number)};}else if(url.pathname==='/api/prepare')value=await prepareActor(d,(await observe()).block,route.request().postDataJSON(),node.client);else throw Error('Unallowed browser route');await route.fulfill({contentType:'application/json',body:json(value)});}catch{await route.fulfill({status:400,body:'{}'});}});
     await page.route('**/rpc',async route=>{const request=route.request().postDataJSON();try{const result=await node.request(request.method,request.params);await route.fulfill({contentType:'application/json',body:json({jsonrpc:'2.0',id:request.id,result})});}catch{await route.fulfill({contentType:'application/json',body:json({jsonrpc:'2.0',id:request.id,error:{code:-32000,message:'local RPC rejected'}})});}});
     await page.exposeBinding('walletRequest',async(_,request:any)=>{
       if(request.method==='eth_accounts'||request.method==='eth_requestAccounts')return [account];
-      if(request.method==='eth_sendTransaction'){const tx=request.params[0];if(tx.from.toLowerCase()!==account)throw Error('Wrong fixture wallet');sends.push(tx);const receipt=await node.send(account,tx.to,tx.data);record(receipt);return receipt.transactionHash;}
+      if(request.method==='eth_sendTransaction'){const tx=request.params[0];if(tx.from.toLowerCase()!==account)throw Error('Wrong fixture wallet');sends.push(tx);const receipt=await node.send(account,tx.to,tx.data);await record(receipt);return receipt.transactionHash;}
       return node.request(request.method,request.params??[]);
     });
     await page.addInitScript(()=>{const listeners:Record<string,Function[]>={};(window as any).ethereum={request:(args:any)=>(window as any).walletRequest(args),on:(name:string,fn:Function)=>(listeners[name]??=[]).push(fn),removeListener:(name:string,fn:Function)=>{listeners[name]=(listeners[name]??[]).filter(x=>x!==fn);}};});

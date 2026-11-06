@@ -10,6 +10,16 @@ import {Store} from '../store.ts';
 import {Indexer} from '../indexer.ts';
 import {snapshot} from '../state.ts';
 import {verifyDeployment} from '../config.ts';
+test('review 4: indexed evidence retains historical provenance and rejects stale canonical boundaries',async()=>{
+  const {indexedEvents}=(await import('../state.ts')) as any;assert.equal(typeof indexedEvents,'function');
+  const hash=(n:string)=>`0x${n.repeat(64)}`;
+  const blocks=[{header:{number:'1',hash:hash('1'),timestamp:'10'},logs:[{blockNumber:'1',blockHash:hash('1')}]},{header:{number:'2',hash:hash('2'),timestamp:'20'},logs:[{blockNumber:'2',blockHash:hash('2')}] }];
+  const index={store:{data:{blocks}},sync:async()=>{}};
+  const rpc={getBlock:async({blockNumber}:any)=>({number:blockNumber,hash:hash(blockNumber.toString()),timestamp:blockNumber*10n})};
+  const evidence=await indexedEvents(index,rpc,{number:1n,hash:hash('1')});assert.equal(evidence.block.number,1n);assert.equal(evidence.events.length,1);assert.equal(evidence.events[0].blockTimestamp,10n);
+  await assert.rejects(()=>indexedEvents(index,rpc,{number:1n,hash:hash('3')}),/boundary/);
+  rpc.getBlock=async()=>({number:1n,hash:hash('3'),timestamp:10n});await assert.rejects(()=>indexedEvents(index,rpc,{number:1n,hash:hash('1')}),/replaced/);
+});
 
 test('API state never combines new config discovery or reorg identifiers with a different block',async()=>{
   const state=await import('../state.ts') as any;assert.equal(typeof state.indexedState,'function','indexed API state is required');

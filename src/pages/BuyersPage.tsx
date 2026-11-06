@@ -120,7 +120,7 @@ export function BuyersPage() {
                     PAID {c.paidFmt} @ {c.pxFmt}
                   </span>
                   <span>
-                    DELIVERED UNITS {c.worthFmt}
+                    {c.unitsLabel} {c.worthFmt}
                   </span>
                 </div>
                 {c.canWithdraw && (
@@ -208,7 +208,7 @@ export function BuyersPage() {
                       <span>
                         {o.feeFmt}
                       </span>
-                      <span>
+                      <span title={`Immutable capacity ${o.capacityFmt} · current locked cash ${o.escFmt}`}>
                         {o.escFmt}
                       </span>
                       <span>

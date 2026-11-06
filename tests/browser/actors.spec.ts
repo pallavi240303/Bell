@@ -1,6 +1,6 @@
 import {test,expect,type Page} from '@playwright/test';
 import {harness} from './harness';
-async function open(page:Page,name:string){await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('dialog').getByRole('button',{name,exact:true}).click();await expect(page.getByText('(LOADING)').locator('..')).toHaveCSS('opacity','0');}
+async function open(page:Page,name:string){await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('dialog').getByRole('button',{name,exact:true}).click();await expect(page.locator('main > div').first()).toContainText(name);await expect(page.getByText('(LOADING)').locator('..')).toHaveCSS('opacity','0');}
 async function connect(page:Page){await open(page,'LEND');await page.getByRole('button',{name:/^WALLET/}).click();await expect(page.locator('header')).toContainText('LOCAL ANVIL');}
 test('connected lender approves exact cash, deposits and redeems actual shares',async({page})=>{
   const h=await harness();try{await h.attach(page,'lender');await page.goto('/');await connect(page);await open(page,'LEND');await page.getByText('WALLET & EXACT INPUTS').click();await page.getByLabel('Approval amount raw').fill('1000000');await page.getByRole('button',{name:'APPROVE EXACT AMOUNT'}).click();await expect(page.getByText('CONFIRMED · canonical snapshot refreshed')).toBeVisible();
@@ -10,7 +10,7 @@ test('connected lender approves exact cash, deposits and redeems actual shares',
   }finally{await h.stop();}
 });
 test('connected buyer posts complete terms, cancels FREE lot and withdraws cash credit',async({page})=>{
-  const h=await harness();try{await h.attach(page,'buyerA');await page.goto('/');await connect(page);await open(page,'BUYERS');await page.getByText('WALLET & EXACT INPUTS').click();
+  const h=await harness();try{await h.attach(page,'buyerA');await page.goto('/');await connect(page);await open(page,'BUYERS');await page.getByText('WALLET & EXACT INPUTS').click();await expect(page.locator('main details')).toHaveAttribute('open','');
     await page.getByLabel('Offer terms').fill(JSON.stringify({...h.input.offerCommon,assetId:h.asset,policyHash:h.policy,strike:'100000000',nonce:'10'}));
     const inputs=page.locator('main input');await inputs.nth(0).fill('5');await inputs.nth(1).fill('100');await inputs.nth(2).fill('0.0001');await page.getByRole('button',{name:'LOCK USDC · POST OFFER',exact:true}).click();await expect.poll(()=>h.sends.length).toBe(1);await expect(page.getByText('CONFIRMED · canonical snapshot refreshed')).toBeVisible();
     await page.getByRole('button',{name:'CANCEL',exact:true}).last().click();await expect.poll(()=>h.sends.length).toBe(2);await expect(page.getByText('CONFIRMED · canonical snapshot refreshed')).toBeVisible();
