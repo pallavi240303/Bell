@@ -30,7 +30,8 @@
     "test:keeper": "node --import tsx --test services/keeper/test/*.test.ts",
     "verify:workspace": "npm run typecheck && forge build && npm run test:unit",
     "verify": "npm run format:check && npm run build && npm run typecheck:cre && npm run test:unit && npm run test:frontend && npm run test:contracts && npm run test:engine && npm run test:integration && npm run test:browser && npm run test:e2e && npm run test:visual && npm run build:frontend && npm run build:cre",
-    "test:contracts": "forge test"
+    "test:contracts": "forge test",
+    "test:cre-worker": "node --import tsx --test services/cre-worker/test/*.test.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
