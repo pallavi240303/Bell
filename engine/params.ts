@@ -5,5 +5,7 @@ export const MAX_SHARES = MAX_CASH;
 export const MAX_PRICE = (1n << 96n) - 1n;
 export const MAX_UINT = (1n << 256n) - 1n;
 export const MAX_TIME = (1n << 64n) - 1n;
+export const MAX_MULTIPLIER_COMPONENT = (1n << 64n) - 1n;
+export const MAX_DELIVERY_UNITS_PER_SHARE = MAX_MULTIPLIER_COMPONENT * MAX_MULTIPLIER_COMPONENT;
 export const ZERO = `0x${'0'.repeat(64)}` as const;
 export const ZERO_ADDRESS = `0x${'0'.repeat(40)}` as const;

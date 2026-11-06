@@ -4,7 +4,7 @@ import { ZERO } from './params.ts';
 import type { Quote } from './types.ts';
 export const address = (n: bigint) => `0x${n.toString(16).padStart(40, '0')}` as const;
 export const word = (n: bigint) => `0x${n.toString(16).padStart(64, '0')}` as const;
-export function fixtureQuote(): Quote { return { borrower: address(1n), recipient: address(2n), borrowerNonce: 3n, expiry: 1000n, assetId: word(4n), sessionId: word(5n), configVersion: 6n, configHash: word(7n), policyHash: word(8n), principal: 900n, collateralShares: 10n ** 19n, referencePrice: 110n, scheduledReportHash: word(12n), corporateActionHash: ZERO, snapshotMultiplierNumerator: 2n, snapshotMultiplierDenominator: 1n, totalPremium: 14n, totalOfferShares: 9n * 10n ** 18n, weightedStrike: 150n, minSettlementDeadline: 900n, maxSettlementDeadline: 1100n }; }
+export function fixtureQuote(): Quote { return { borrower: address(1n), recipient: address(2n), borrowerNonce: 3n, expiry: 1000n, assetId: word(4n), sessionId: word(5n), configVersion: 6n, configHash: word(7n), policyHash: word(8n), principal: 900n, collateralShares: 10n ** 19n, referencePrice: 110n, scheduledReportHash: word(12n), corporateActionHash: ZERO, snapshotMultiplierNumerator: 2n, snapshotMultiplierDenominator: 1n, totalPremium: 14n, totalOfferShares: 9n * 10n ** 18n, weightedStrike: 150n, minSettlementDeadline: 900n, loanId: 9n, maxDebtAtAcceptance: 1000n, maxDebtAtDeadline: 1100n, referenceReportHash: word(99n), maxSettlementDeadline: 1100n }; }
 test('canonical quote hashing binds every static field, domain, order and lengths', async () => {
   const { quoteHash } = await import('./quote.ts'); const q = fixtureQuote();
   const hash = quoteHash(1n, address(9n), q, [word(1n), word(2n)], [word(3n)]);
