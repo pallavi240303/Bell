@@ -1,0 +1,26 @@
+# Paste into Coolify: New resource -> Docker Compose Empty.
+# No domain or port is needed. The image supplies its HEALTHCHECK.
+services:
+  worker:
+    image: ghcr.io/pallavi240303/bell-cre-worker@sha256:11aea662fefedb9d453e7041a50d62831c26101657bc380ea12b26579bb046a9
+    platform: linux/amd64
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 2m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      BELL_WORKER_MODE: ${BELL_WORKER_MODE:-dry-run}
+      BELL_WORKER_DATA_DIR: /data
+      BELL_WORKER_JOBS_DIR: /jobs
+      CRE_API_KEY: ${CRE_API_KEY:-}
+      CRE_ETH_PRIVATE_KEY: ${CRE_ETH_PRIVATE_KEY:-}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+      TWELVEDATA_API_KEY: ${TWELVEDATA_API_KEY:-}
+    volumes:
+      - worker-data:/data
+      - worker-jobs:/jobs:ro
+volumes:
+  worker-data:
+  worker-jobs:

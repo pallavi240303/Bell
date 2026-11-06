@@ -36,6 +36,16 @@ The image runs as UID/GID `1000:1000`. Docker initializes a new named data volum
 
 The two mounts are `/data` (persistent and writable) and `/jobs` (read only). Runtime home, CLI cache and temporary files are below `/data`. The supplied Compose file uses a read-only root filesystem, drops capabilities and waits for graceful shutdown. Run one replica for a data volume; its writer lock rejects concurrent instances. Separate data volumes cannot coordinate broadcasts, so do not run a second independent worker against the same operator workload.
 
+## Coolify
+
+Create a resource using **Docker Compose Empty** and paste `compose.coolify.worker.yaml`. Save, leave Domains empty and deploy. Registry credentials are unnecessary: the image is public. The definition uses a pinned image digest and declares no ports. Coolify uses the image's Docker health check. Use a native Linux/amd64 server and one replica.
+
+This variant does not depend on an adjacent `.env.worker` file or a server-relative jobs folder. Coolify exposes the declared environment-variable references in its Environment Variables panel; enter credentials privately there, never into the Compose source. It creates persistent volumes for `/data` and `/jobs`, and mounts jobs read-only in the worker. Keep the data volume across restarts and redeploys.
+
+Initially the worker is healthy and idle: the jobs volume is empty. The server administrator must populate its jobs volume with complete, validated immutable JSON jobs through a separate administrative mount; use the actual volume name shown by Coolify or Docker inspect, since Coolify can prefix it. Write files atomically and make them readable by UID 1000. Do not make the worker's own `/jobs` mount writable. No jobs are created automatically.
+
+Keep `BELL_WORKER_MODE=dry-run` until a reviewed broadcast run is intended. Pending CRE API-key access still prevents unattended authenticated jobs. Container health alone does not prove report submission. Do not provide actor wallet keys to this worker.
+
 ## Direct container command
 
 ```sh
