@@ -52,6 +52,7 @@ test('Arc reads bind receiver/oracle/config/state and use a distinct finalized r
     const calls: string[] = [];
     const call = (_target: string, method: string, args: any[]) => {
         calls.push(method);
+        if (method === 'marketSnapshot') return [call(_target,'assetState',[]),call(_target,'sessionFact',[]),call(_target,'sessionFact',[]),call(_target,'benchmarkOf',[f.config.sessionId]),call(_target,'benchmarkOf',[f.config.referenceSessionId]),call(_target,'latestCorporateAction',[]),f.state.latestReference];
         if (method === 'assetState')
             return { nextNonce: 3n, stateHash: f.state.stateHash, configHash: f.state.configHash, activeSessionId: f.bundle.sessionId, halted: false, latestCorporateActionHash: zeroHash };
         if (method === 'sessionFact')
@@ -68,7 +69,7 @@ test('Arc reads bind receiver/oracle/config/state and use a distinct finalized r
     };
     const state = readArcState(f.config, f.config.chainId, call);
     assert.deepEqual(state, f.state);
-    for (const required of ['assetState', 'sessionFact', 'sessionPhase', 'benchmarkOf', 'getConfig', 'latestCorporateAction', 'receiver', 'oracle', 'forwarder'])
+    for (const required of ['marketSnapshot', 'assetState', 'sessionFact', 'benchmarkOf', 'getConfig', 'latestCorporateAction', 'receiver', 'oracle', 'forwarder'])
         assert.ok(calls.includes(required));
     assert.throws(() => readArcState(f.config, '999', call));
 });

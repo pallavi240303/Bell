@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import legacyBytes from '../fixtures/report-goldens.json' with { type: 'json' };
 import test from 'node:test';
 import { decodeAbiParameters, keccak256, parseAbiParameters, zeroHash } from 'viem';
 import { decide, encodeReport, configurationHash, execute } from '../src/core.ts';
@@ -204,4 +205,38 @@ test('read retries are bounded, state reread stops races, and ambiguous writes n
     reads = 0;
     assert.equal(execute(f.config, ports)?.status, 'unavailable');
     assert.equal(reads, 3);
+});
+
+for(const kind of [3,4]) for(const field of ['multiplierNumerator','multiplierDenominator'] as const)
+ for(const value of [0n,1n,(1n<<64n)-1n,1n<<64n]) test(`kind ${kind} ${field} supported component ${value}`,()=>{
+  const f=fixture();f.bundle.kind=kind;
+  f.bundle.corporate.action=1;f.bundle.corporate.actionId=hash('bounds-action');
+  f.bundle.corporate.multiplierNumerator='1';f.bundle.corporate.multiplierDenominator='1';f.bundle.corporate[field]=value.toString();
+  if(kind===4)f.bundle.sessionId=zeroHash;
+  else {f.state.corporate={...f.state.corporate,action:1,actionId:f.bundle.corporate.actionId,multiplierNumerator:f.bundle.corporate.multiplierNumerator,multiplierDenominator:f.bundle.corporate.multiplierDenominator};}
+  assert.equal(decide(f.config,f.bundle,f.state,f.now).status,value===0n||value>=(1n<<64n)?'reject':'submit');
+ });
+
+// Captured from the pre-bound implementation; the ABI envelope and valid bytes must not change.
+test('legacy valid kinds one through five retain exact report hashes and 21-word payloads',()=>{
+ const goldens=["0x6a7af16b12aec675031fa1f0400d60259a8f95f45dffa209e5d19a1ae7c27bec", "0x6bb143ee3c9db235e1df7cbed8bc25c76f8a55c94ee96b9f7c513a15c02e6423", "0x5dd83d28e128e95e60389c39991e8a5d6d5dbcf9eb8af3d6ed50af9f2b044caa", "0x024c128a9f90f9be7e5f198696ad9571ce29c79cbf1f958388223696fadc0fa7", "0x4760cc194ea1fb2646ffa4eb147718c86ce953f398b5283da0139e02a30c48b6"];
+ for(const kind of [1,2,3,4,5]){
+  const f=fixture();f.bundle.kind=kind;
+  if(kind===1){f.bundle.calendar.status='SCHEDULED';f.bundle.calendar.scheduledOpen='1010';f.bundle.calendar.scheduledClose='1020';f.bundle.calendar.scheduledReopen='1030';f.state.activeSessionId=zeroHash;f.state.activePhase=0;f.state.session.phase=0;}
+  if(kind===2){f.bundle.calendar.status='CLOSED';f.state.session.phase=1;}
+  if(kind===4){f.bundle.sessionId=zeroHash;f.bundle.corporate.action=1;f.bundle.corporate.actionId=hash('split');f.bundle.corporate.multiplierNumerator='10';}
+  if(kind===5){f.bundle.sessionId=zeroHash;f.bundle.calendar.status='HALTED';}
+  const result=decide(f.config,f.bundle,f.state,f.now);assert.equal(result.status,'submit');
+  if(result.status!=='submit')throw new Error('expected report');
+  assert.equal(encodeReport(result.report),legacyBytes[kind-1]!.bytes);assert.equal(result.reportHash,goldens[kind-1]);assert.equal((encodeReport(result.report).length-2)/2,672);
+ }
+});
+test('benchmark rejects unsupported current corporate-state components',()=>{
+ for(const field of ['multiplierNumerator','multiplierDenominator'] as const){
+  const f=fixture();f.bundle.corporate.action=1;f.bundle.corporate.actionId=hash('bounds');
+  f.state.corporate={action:1,actionId:hash('bounds'),multiplierNumerator:'1',multiplierDenominator:'1',observedAt:'900'};
+  f.state.corporate[field]=(1n<<64n).toString();
+  const result=decide(f.config,f.bundle,f.state,f.now);assert.equal(result.status,'reject');
+  if(result.status==='reject')assert.equal(result.reason,'INTEGER_RANGE');
+ }
 });

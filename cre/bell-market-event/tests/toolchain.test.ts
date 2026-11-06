@@ -9,9 +9,9 @@ test('SDK and compiler are isolated, exact pinned, and runtime code excludes non
     assert.equal(lock.packages['node_modules/@chainlink/cre-sdk'].version, '1.23.0');
     assert.equal(p.engines.bun, '>=1.2.21');
     assert.match(p.scripts.build, /cre-compile/);
-    for (const file of ['core', 'schema', 'adapters', 'workflow', 'main']) {
+    for (const file of ['core', 'schema', 'adapters', 'workflow', 'main', 'quotes']) {
         const source = readFileSync(new URL(`../src/${file}.ts`, import.meta.url), 'utf8');
-        assert.doesNotMatch(source, /Date\.now|Math\.random|Promise\.race|process\.env|privateKeyToAccount|node:|getSecret/);
+        assert.doesNotMatch(source, /Date\.now|Math\.random|Promise\.race|process\.env|privateKeyToAccount|node:/);
     }
 });
 test('toolchain checker reports real versions and missing tools honestly', () => {

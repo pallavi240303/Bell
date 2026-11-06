@@ -22,7 +22,10 @@ export function fixture() {
         nextNonce: '3', stateHash: hash('closed-state'), configHash, activeSessionId: sessionId, activePhase: 2, halted: false,
         session: { assetId, configHash, scheduledOpen: '800', scheduledClose: '900', closeObservedAt: '900', phase: 2 },
         benchmarkFinalized: false, referencePrice: '140000000',
-        corporate: { action: 0, actionId: zeroHash, multiplierNumerator: '0', multiplierDenominator: '0', observedAt: '0' },
+        corporate: { action: 0, actionId: zeroHash, multiplierNumerator: '0', multiplierDenominator: '0', observedAt: '0', reportHash: zeroHash },
+        latestCorporateActionHash: zeroHash,
+        activeSession: { assetId, configHash, scheduledOpen: '800', scheduledClose: '900', closeObservedAt: '900', phase: 2 },
+        latestReference: { assetId: zeroHash, sessionId: zeroHash, configHash: zeroHash, price: '0', multiplierNumerator: '0', multiplierDenominator: '0', observedAt: '0', validUntil: '0', corporateActionHash: zeroHash, primarySourceHash: zeroHash, secondarySourceHash: zeroHash, reportHash: zeroHash },
     };
     return { config, bundle, state, now: 1000n };
 }
