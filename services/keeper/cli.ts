@@ -14,7 +14,7 @@ if(process.argv[2]==='replay'){
   const rpcUrl=process.env.RPC_URL;if(!rpcUrl)throw Error('RPC_URL required');const client=clientFor(rpcUrl);await verifyDeployment(client,deployment);
   const store=new Store('services/keeper/runs/index.json',deployment);
   const index=new Indexer(store,client,async(block,logs,history)=>{const all=[...history.flatMap(b=>b.logs),...logs];const offers=all.filter(l=>l.decoded?.eventName==='OfferPosted').map(l=>l.decoded.args.offerId as Hex);return snapshot(client,deployment,[],offers,block,all);});
-  const refresh=()=>indexedState(index,client);
-  const server=createApi({state:refresh,events:async()=>{await index.sync();return store.data.blocks.flatMap(b=>b.logs);},prepare:async input=>{const current=await refresh();return prepareActor(deployment,current.block,input,client);}});
+  const refresh=(watch:Hex[]=[])=>indexedState(index,client,watch);
+  const server=createApi({manifest:()=>deployment,state:refresh,events:async()=>{await index.sync();return store.data.blocks.flatMap(b=>b.logs);},prepare:async input=>{const current=await refresh();return prepareActor(deployment,current.block,input,client);}});
   server.listen(Number(process.env.PORT??8787),'127.0.0.1');
 }else throw Error('Usage: node --import tsx services/keeper/cli.ts replay [input.json] | serve deployment.json');

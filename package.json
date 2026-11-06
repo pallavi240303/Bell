@@ -4,6 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "vite",
+    "build:frontend": "npm run abi:check && npm run typecheck && vite build",
+    "abi:generate": "node --import tsx scripts/generate-browser-abis.ts",
+    "abi:check": "node --import tsx scripts/generate-browser-abis.ts --check",
+    "test:frontend": "node --import tsx --test tests/frontend/*.test.ts tests/unit/frontend.test.ts",
+    "test:visual": "playwright test tests/visual --config playwright.config.ts --output test-results/visual",
+    "test:browser": "playwright test tests/browser --config playwright.config.ts --output test-results/browser",
     "format": "forge fmt",
     "format:check": "forge fmt --check",
     "lint": "npm run typecheck",
@@ -24,14 +31,25 @@
     "verify": "npm run format:check && npm run build && npm run test:unit && npm run test:integration && npm run test:e2e && npm run verify:parity && npm run verify:replay"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@tailwindcss/vite": "4.3.4",
     "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.2.1",
+    "tailwindcss": "4.3.4",
     "tsx": "4.23.15",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vite": "8.3.5"
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
-    "viem": "2.38.5"
+    "lucide-react": "0.469.0",
+    "motion": "14.9.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "viem": "2.57.16"
   }
 }

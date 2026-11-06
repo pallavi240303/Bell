@@ -1,11 +1,17 @@
 import {createServer} from 'node:http';
 import {json} from './types.ts';
-export function createApi(deps:{state:()=>Promise<unknown>;events:()=>Promise<unknown>;prepare:(input:any)=>Promise<unknown>}){
+export function createApi(deps:{state:(watch?:`0x${string}`[])=>Promise<unknown>;events:()=>Promise<unknown>;prepare:(input:any)=>Promise<unknown>;manifest?:()=>unknown}){
   return createServer(async(req,res)=>{
     res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');
     try{
       let value:unknown;
-      if(req.method==='GET'&&req.url==='/state')value=await deps.state();
+      const url=new URL(req.url??'/', 'http://localhost');
+      if(req.method==='GET'&&url.pathname==='/state'){
+        const watch=url.searchParams.getAll('watch');
+        if(watch.length>8||watch.some(x=>!/^0x[0-9a-fA-F]{40}$/.test(x))||[...url.searchParams.keys()].some(k=>k!=='watch'))throw Error('explicit watch address required');
+        value=await deps.state(watch as `0x${string}`[]);
+      }
+      else if(req.method==='GET'&&req.url==='/manifest'&&deps.manifest)value=deps.manifest();
       else if(req.method==='GET'&&req.url==='/events')value=await deps.events();
       else if(req.method==='GET'&&req.url==='/health')value={mode:'read-and-prepare',actorSigning:'connected-wallet'};
       else if(req.method==='POST'&&req.url==='/prepare'){

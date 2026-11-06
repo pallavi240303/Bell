@@ -38,16 +38,20 @@ export async function snapshot(rpc:any,d:Deployment,watch:Hex[]=[],offerIds:Hex[
         read('vault','debtOf',[id]),read('vault','getDebt',[id]),read('vault','remainingSnapshotShares',[id]),read('vault','backingOf',[id]),read('vault','outstandingClaimUnits',[id]),read('oracle','benchmarkOf',[receipt.consent.sessionId]),read('oracle','assetState',[receipt.consent.assetId])]);
       receipts[id.toString()]={receipt,debt,debtRecord,remainingShares,backing,outstandingUnits,benchmark,assetState};
     }
-    for(const id of ids){offers[id]=await read('book','getOffer',[id]);actors.add(offers[id].buyer);}
+    const termsHashes:Record<string,Hex>={};
+    for(const id of ids){offers[id]=await read('book','getOffer',[id]);termsHashes[id]=await read('book','termsHashOf',[id]);actors.add(offers[id].buyer);}
     const nextClaimId:bigint=await read('vault','nextClaimId');for(let id=1n;id<nextClaimId;id++){claims[id.toString()]=await read('vault','getClaim',[id]);actors.add(claims[id.toString()].owner);}
     const balances:Record<string,any>={};await Promise.all([...actors].map(async actor=>{
       const [cash,stock,premiumCredit,cashCredit,poolShares,cashAllowanceManager,stockAllowanceVault,borrowerNonce]=await Promise.all([read('cash','balanceOf',[actor]),read('stock','balanceOf',[actor]),read('book','premiumCredit',[actor]),read('book','cashCredit',[actor]),read('pool','balanceOf',[actor]),read('cash','allowance',[actor,d.addresses.manager]),read('stock','allowance',[actor,d.addresses.vault]),read('manager','borrowerNonce',[actor])]);
-      balances[actor]={cash,stock,premiumCredit,cashCredit,poolShares,cashAllowanceManager,stockAllowanceVault,borrowerNonce};
+      const [cashAllowancePool,cashAllowanceBook,nativeGas,restricted]=await Promise.all([read('cash','allowance',[actor,d.addresses.pool]),read('cash','allowance',[actor,d.addresses.book]),rpc.getBalance({address:actor,blockNumber:block.number}),read('stock','restricted',[actor])]);
+      balances[actor]={cash,stock,premiumCredit,cashCredit,poolShares,cashAllowanceManager,stockAllowanceVault,borrowerNonce,cashAllowancePool,cashAllowanceBook,nativeGas,restricted};
     }));
     const [totalAssets,totalSupply,activeReceiptIds,totalLockedCash,totalPremiumCredits,totalCashCredits,accountedBacking]=await Promise.all([read('pool','totalAssets'),read('pool','totalSupply'),read('pool','activeReceiptIds'),read('book','totalLockedCash'),read('book','totalPremiumCredits'),read('book','totalCashCredits'),read('vault','accountedBacking',[d.addresses.stock])]);
     const assets:Record<string,any>={},sessions:Record<string,any>={};
     for(const id of assetIds){const configs:Record<string,any>={},latest:bigint=await read('registry','latestVersion',[id]);for(let version=1n;version<=latest;version++){const [config,effectiveAt,configHash]=await read('registry','getConfig',[id,version]);configs[version.toString()]={config,effectiveAt,configHash};}assets[id]={configs,state:await read('oracle','assetState',[id]),corporateAction:await read('oracle','latestCorporateAction',[id])};}
     for(const id of sessionIds)sessions[id]={fact:await read('oracle','sessionFact',[id]),benchmark:await read('oracle','benchmarkOf',[id])};
-    return {receipts,offers,claims,balances,assets,sessions,pool:{totalAssets,totalSupply,activeReceiptIds},book:{totalLockedCash,totalPremiumCredits,totalCashCredits},accountedBacking,nextReceiptId,nextClaimId};
+    const [cashSymbol,cashDecimals,stockSymbol,stockDecimals,paused]=await Promise.all([read('cash','symbol'),read('cash','decimals'),read('stock','symbol'),read('stock','decimals'),read('stock','paused')]);
+    const receiverModes=discoveryLogs.filter(l=>l.address.toLowerCase()===d.addresses.receiver.toLowerCase()&&l.decoded?.eventName==='ReceiverReportAccepted').map(l=>integers(l.decoded.args.mode));
+    return {receipts,offers,termsHashes,claims,balances,assets,sessions,tokens:{cash:{symbol:cashSymbol,decimals:cashDecimals},stock:{symbol:stockSymbol,decimals:stockDecimals,paused}},receiverMode:receiverModes.at(-1)??null,pool:{totalAssets,totalSupply,activeReceiptIds},book:{totalLockedCash,totalPremiumCredits,totalCashCredits},accountedBacking,nextReceiptId,nextClaimId};
   },at);
 }

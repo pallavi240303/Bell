@@ -1,0 +1,89 @@
+/* Theme and utilities with the established base reset. */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+@font-face {
+  font-family: 'Gridular';
+  src: url('/fonts/Gridular-Regular.woff2') format('woff2'), url('/fonts/Gridular-Regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* BELL design tokens. Every colour, font and motion curve in the UI comes from here. */
+@theme {
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-display: 'Gridular', 'Geist Mono', monospace;
+
+  --color-bg: #0a0a0c;
+  --color-panel: #111116;
+  --color-panel-2: #17172a;
+  --color-raise: #1e1e25;
+  --color-ink: #edece8;
+  --color-dim: #b3b1ba;
+  --color-muted: #8e8c96;
+  --color-faint: #5c5b66;
+  --color-line: #34343d;
+  --color-line-soft: #24242b;
+  --color-indigo: #3d3bf3;
+  --color-indigo-2: #5b59ff;
+  --color-violet: #8b8aff;
+  --color-violet-soft: #d9d8ff;
+  --color-safe: #4ade80;
+  --color-safe-deep: #16a34a;
+  --color-loss: #f87171;
+  --color-loss-deep: #dc2626;
+  --color-warn: #fbbf24;
+
+  --ease-out-expo: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-blink: blink 1s step-end infinite;
+  --animate-marquee: marquee 40s linear infinite;
+
+  @keyframes blink { 50% { opacity: 0; } }
+  @keyframes pulse { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(2.8); opacity: 0; } }
+  @keyframes sweep { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @keyframes pageIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  @keyframes flow { from { left: 0%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } to { left: 100%; opacity: 0; } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes chipIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  @keyframes flash { 0% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes stamp { 0% { opacity: 0; transform: scale(1.25); } 60% { opacity: 1; transform: scale(0.97); } 100% { opacity: 1; transform: scale(1); } }
+  @keyframes riseIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  @keyframes hatch { from { background-position: 0 0; } to { background-position: 25.46px 0; } }
+  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(4px); } }
+  @keyframes draw { from { stroke-dashoffset: 60; } to { stroke-dashoffset: 0; } }
+}
+
+@layer base {
+  html { margin: 0; background: #0a0a0c; color: #edece8; overflow-x: clip; color-scheme: dark; }
+  body { margin: 0; background: transparent; color: #edece8; }
+  body { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+  * { box-sizing: border-box; }
+  a { color: #8b8aff; text-underline-offset: 3px; }
+  a:hover { color: #ffffff; }
+  :focus-visible { outline: 2px solid #3d3bf3; outline-offset: 3px; }
+  select option { background: #111116; color: #edece8; }
+  input::-webkit-outer-spin-button,
+  input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+}
+
+@media (max-width: 900px) {
+  .bento > * { grid-column: 1 / -1 !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* The target cursor replaces the system pointer everywhere on fine-pointer devices. */
+html.cursor-none-all,
+html.cursor-none-all * {
+  cursor: none !important;
+}

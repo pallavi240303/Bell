@@ -1,0 +1,103 @@
+{
+  "approved": [
+    {
+      "file": "borrow-1440.png",
+      "width": 1440,
+      "height": 1266,
+      "sha256": "2698ed4887693c82588c1a128ecbce0607fe8197a38b16fe34a5a76299c8aa80"
+    },
+    {
+      "file": "borrow-390.png",
+      "width": 390,
+      "height": 1861,
+      "sha256": "3dab110a50a703b56a647e897fa2c0fe9f437896845af14e8f152dc27e3fcbfd"
+    },
+    {
+      "file": "buyers-1440.png",
+      "width": 1440,
+      "height": 1242,
+      "sha256": "2a2b6f9da246ca2a45cfea102395a55f39f33d5b524ae8a40ec420e5f9bf6462"
+    },
+    {
+      "file": "buyers-390.png",
+      "width": 390,
+      "height": 1586,
+      "sha256": "25e69aecb81e32fd3e9fbdec1744073d8b74b0b4e2245491a0e3315fbd820d9a"
+    },
+    {
+      "file": "control-1440.png",
+      "width": 1440,
+      "height": 1000,
+      "sha256": "12c3533ea7dc2787709dd82582b1d551c2e30f5e830f4268ecce3ff70e1fc4ec"
+    },
+    {
+      "file": "control-390.png",
+      "width": 390,
+      "height": 1641,
+      "sha256": "b30f3523327edd1270b040fb415e2d32dfdadd102dc1a87e4675d992a9e2a391"
+    },
+    {
+      "file": "home-1440.png",
+      "width": 1440,
+      "height": 6184,
+      "sha256": "469828a9a7d08d013aeb2c2647984444d228fae22d825ea45a944128582880e9"
+    },
+    {
+      "file": "home-390.png",
+      "width": 390,
+      "height": 7318,
+      "sha256": "ee8b480ab8cfdcad531c5afa511226890bc41203715467c4fd132452295ab7c8"
+    },
+    {
+      "file": "lend-1440.png",
+      "width": 1440,
+      "height": 1000,
+      "sha256": "0ab15ba9ed1ec5c34e6be803b76f438790e57b21e3769e48e9fe334e0f022ab6"
+    },
+    {
+      "file": "lend-390.png",
+      "width": 390,
+      "height": 1584,
+      "sha256": "da0f6816667dea2418c83a22bc72bff4f3a148e12968ef6a2273f3a470ad498f"
+    },
+    {
+      "file": "replay-1440.png",
+      "width": 1440,
+      "height": 1436,
+      "sha256": "f02724e4afee9ba71fab1ef95f72f8f181d8fd3f1fe12f7791bdd4d528031b01"
+    },
+    {
+      "file": "replay-390.png",
+      "width": 390,
+      "height": 2315,
+      "sha256": "c085bbf9d33ce6dd7de2c3e6f3856a1d979836941f63a32ae0ab633be55f536f"
+    }
+  ],
+  "maxWidth": 1520,
+  "viewports": [
+    [
+      1440,
+      1000
+    ],
+    [
+      390,
+      844
+    ]
+  ],
+  "breakpoints": [
+    900,
+    1240
+  ],
+  "fonts": [
+    "Gridular",
+    "Geist Mono",
+    "ui-monospace"
+  ],
+  "motion": {
+    "coverMs": 760,
+    "revealMs": 480,
+    "stairDurationMs": 340,
+    "stairStaggerMs": 40
+  },
+  "masks": []
+}

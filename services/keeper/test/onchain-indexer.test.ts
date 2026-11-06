@@ -40,6 +40,12 @@ test('deposit-only lenders and later pool share recipients are discovered withou
     await send('pool','transfer',[recipient,1n]);await index.sync();const last=store.data.blocks.at(-1)!;
     assert.equal(last.projection.state.balances[recipient].poolShares,'1');assert.equal(last.projection.block.hash,last.header.hash);
     const current=await snapshot(node.client,d,[watched]);assert.ok(current.state.balances[watched],'explicit watch remains supported');
+    assert.equal(current.state.balances[lender]?.cashAllowancePool,undefined);
+    assert.equal(current.state.balances[watched].cashAllowancePool,0n);
+    assert.equal(current.state.balances[watched].cashAllowanceBook,0n);
+    assert.equal(typeof current.state.balances[watched].nativeGas,'bigint');
+    assert.equal((current.state as any).tokens.stock.paused,false);
+    assert.equal((current.state as any).tokens.cash.decimals,6n);
   }finally{await node.stop();}
 });
 
