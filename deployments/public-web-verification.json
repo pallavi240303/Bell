@@ -1,0 +1,41 @@
+{
+  "base": "https://arc-studio-bb079c726d744e95a4ce8703.vercel.app",
+  "manifestMatchesRepository": true,
+  "stateStatus": 200,
+  "eventsStatus": 200,
+  "block": {
+    "number": "71070525",
+    "hash": "0x69e5e1760e275bafe13529a64c3082bcb1e3423fcc9cd47ce19f5236da996cf3",
+    "timestamp": "1793989809"
+  },
+  "eventCount": 11,
+  "rpcChainId": "0x4cef52",
+  "sendRawTransactionRejected": true,
+  "unavailablePaths": {
+    "/.env": 404,
+    "/deployments/arc-optional-cover.json": 404
+  },
+  "studioShareURL": "https://studio.arc.io/share/bell-t3ysnjv2vv",
+  "frontendStatus": 200,
+  "healthzStatus": 200,
+  "apiHealthStatus": 200,
+  "manifestStatus": 200,
+  "apiMode": "read-and-prepare",
+  "actorSigning": "connected-wallet",
+  "coldHealthz503Observed": true,
+  "subsequentHealthzReady": true,
+  "actorFinancialReplay": "pending",
+  "recovery": {
+    "publicFilesRestoredOrRecreated": 68,
+    "independentlyVerifiedFileHashes": 68,
+    "protectedFilesUnchanged": 105,
+    "credentialsRestored": false,
+    "ownerGuardrailsRecreated": true
+  },
+  "studioShareFrame": {
+    "rendered": true,
+    "networkStatus": "ARC MANIFEST VERIFIED",
+    "displayedBlock": "71070147",
+    "walletSigningChecked": false
+  }
+}

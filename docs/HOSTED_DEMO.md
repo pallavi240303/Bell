@@ -2,6 +2,14 @@
 
 Use the corrected manifest in `deployments/arc-optional-cover.json`. Contracts, economic rules and the existing visual design are unchanged.
 
+## Current public application
+
+- Application: https://arc-studio-bb079c726d744e95a4ce8703.vercel.app
+- Studio share page: https://studio.arc.io/share/bell-t3ysnjv2vv
+- [Verified public endpoint evidence](../deployments/public-web-verification.json)
+
+Frontend, backend and canonical read evidence were verified publicly. Real connected-wallet borrowing, offers, cover and settlement remain to be demonstrated by the actors. The first cold request can return 503 during index rebuild; wait for readiness before starting the timed cover window.
+
 ## Hosting
 
 1. Connect Vercel in the existing BELL Arc Studio project. Authorize access in your own account.

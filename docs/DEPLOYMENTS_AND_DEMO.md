@@ -6,6 +6,12 @@ The corrected ordinary-borrowing and optional-cover contracts are deployed on **
 
 The earlier deployed receiver uses **CRE CLI simulation and the official mock forwarder**. This is not a production DON deployment. The stock is a mock token without issuer backing. Transaction receipts and runtime code were checked; explorer source verification has not been completed.
 
+## Public frontend and backend
+
+The [public BELL application](https://arc-studio-bb079c726d744e95a4ce8703.vercel.app) is hosted with its read-and-prepare backend and RPC proxy. [Arc Studio share page](https://studio.arc.io/share/bell-t3ysnjv2vv). Independent verification recorded HTTP 200 for frontend, readiness, API health, manifest, state and canonical pinned events. The manifest matched the corrected deployment exactly. Read-only RPC returned chain 5042002; transaction-send methods were refused and sensitive file routes returned 404. See [verification evidence](../deployments/public-web-verification.json).
+
+A cold instance initially returned 503 while indexing, then became ready. This does not establish a latency guarantee. Connected-wallet financial replay remains pending: all four actors must connect and sign their own actions. CRE runs locally for the demo.
+
 ## Corrected public setup and native CRE reports
 
 Both configuration records are confirmed: [demo asset](https://explorer.testnet.arc.io/tx/0x17a2a7154030e327268b73242704e79b8e53b20f51a262c707b0a25ddff1e2c5) (`0x4e37900212b0e65d35a76de49e6992976f566e0961524725a18840d49fa375d6`) and [proof asset](https://explorer.testnet.arc.io/tx/0x2b0f4d71edbc607dcf4f33fd3a1f102209d2248a5e916d4bda04fe199c4a8967) (`0xc243ae199de4a4261e4e14158dbe1fd1a3ef766463317d929f7fef5e19178c75`). The [bounded mock mint](https://explorer.testnet.arc.io/tx/0x6ea80130a17be3928a9ff1468d57ae6f5012e21dcad034b7b4f204b3f7bb1a2d) supplied Alice with `10000000000000000` token units (`0.01` mock share); this is setup, not a signed actor loan or borrowing action.
