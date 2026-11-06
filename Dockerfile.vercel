@@ -16,7 +16,7 @@ COPY contracts/lib/openzeppelin-contracts/LICENSE ./vendor-licenses/openzeppelin
 COPY engine/ ./engine/
 COPY src/ ./src/
 COPY public/ ./public/
-COPY services/keeper/ ./services/keeper/
+COPY services/keeper/abi.ts services/keeper/config.ts services/keeper/store.ts services/keeper/indexer.ts services/keeper/discovery.ts services/keeper/state.ts services/keeper/api.ts services/keeper/transactions.ts services/keeper/types.ts ./services/keeper/
 COPY scripts/generate-browser-abis.ts scripts/serve-deployment.mjs ./scripts/
 COPY deployments/arc-optional-cover.json ./deployments/arc-optional-cover.json
 RUN forge build contracts/src contracts/test/helpers/MockCashToken.sol contracts/test/helpers/MockEligibilityPolicy.sol

@@ -53,3 +53,14 @@ The initial public sparse scan encountered RPC rate limiting. Charging each log 
 Local verification recorded 76 frontend tests, 23 engine tests, five pacing tests and 38 discovery/dense regressions passing. Six desktop/mobile browser tests used a separate Vite server and owned Anvil fixtures: provider selection, consent clearing, normal settlement and terminal settlement. Settlement outcomes matched the engine exactly. These are local test-wallet results; connected MetaMask/Rabby public actor transactions remain to be signed by the owner.
 
 See [hosted demo steps](HOSTED_DEMO.md). A public Vercel deployment and its cold-start checks must be recorded separately once actually completed. Docker is not installed on the local machine; local HTTP tests are not described as a container image build.
+
+
+## Container image verification
+
+The first source-built image exposed an over-broad Docker context: the build stage copied local replay modules without their local helper. The build now explicitly copies the nine runtime keeper modules, and each reopened Docker context directory re-excludes descendants before permitting specific children. The corrected context contained exactly 107 files and excluded env files, credentials, journals, runtime state and local replay helpers.
+
+The corrected image built successfully in Studio: Foundry compiled 35 files, then ABI verification, TypeScript and Vite passed inside Docker. Image configuration ID: `sha256:7f50dea1ef543782ff28a868bb7ddf6dec1b3e9d54e8b929e234d297e086b34c`. The container runs as `node`, serves the complete frontend/API/RPC stack, and reports readiness only after actual index synchronization.
+
+Container health and manifest returned HTTP 200. The first two state reads returned HTTP 400 with the generic stale-state response; their underlying cause was not isolated and is not described as a pass. The third returned HTTP 200 in 38.4 seconds, with 11 matching events at block `71046321`, hash `0xa86b4d59a417614d8f131a3d43821168d7790345458570fc4342e1fc9be1f67c`. Through the reviewed preview proxy, a subsequent state read returned HTTP 200 on its first attempt in 34 seconds. RPC signing/sending/admin methods were rejected, and source/env/artifact paths returned 404. This establishes container execution, not a public Vercel URL or real connected-wallet financial replay.
+
+All 14 desktop/mobile visual comparisons passed against unchanged baselines after wallet integration. Studio hosting connections are browser-local; the Vercel connection was confirmed in the owner's Arc browser. The terminal-driven Studio agent cannot use that browser's token. Never copy that token into source or chat.
