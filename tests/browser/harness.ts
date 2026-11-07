@@ -4,6 +4,7 @@ import {createLocalFixture} from '../../services/keeper/replay.ts';
 import {artifact,contracts,argsFor} from '../../services/keeper/abi.ts';
 import {prepareActor} from '../../services/keeper/transactions.ts';
 import {json} from '../../services/keeper/types.ts';
+import {revertBytes} from '../../services/keeper/state.ts';
 import {coverPreview} from '../../src/adapter/actions.ts';
 import {policyHash} from '../../engine/quote.ts';
 export async function harness(seedOffers=true,seedLoan=true){
@@ -28,9 +29,9 @@ export async function harness(seedOffers=true,seedLoan=true){
   await page.exposeBinding('walletRequest',async(_,request:any)=>{
    if(request.method==='eth_accounts'||request.method==='eth_requestAccounts')return [account];
    if(request.method==='eth_sendTransaction'){const tx=request.params[0];if(tx.from.toLowerCase()!==account)throw Error('Wrong fixture wallet');sends.push(tx);const c=Object.keys(a).find(k=>a[k]!.toLowerCase()===tx.to.toLowerCase())!;const {decodeFunctionData}=await import('viem');const call=decodeFunctionData({abi:artifact(contracts[c]!).abi,data:tx.data});return (await send(account,c,call.functionName,call.args as any[])).transactionHash;}
-   return node.request(request.method,request.params??[]);
+   try{return await node.request(request.method,request.params??[]);}catch(error){return {__bellRpcError:{code:(error as any).code??(error as any).cause?.code??-32603,message:(error as Error).message,data:revertBytes(error)}};}
   });
-  await page.addInitScript(()=>{const listeners:Record<string,Function[]>={};(window as any).ethereum={request:(args:any)=>(window as any).walletRequest(args),on:(name:string,fn:Function)=>(listeners[name]??=[]).push(fn),removeListener:(name:string,fn:Function)=>{listeners[name]=(listeners[name]??[]).filter(x=>x!==fn);}};(window as any).emitWallet=(event:string,value:any)=>listeners[event]?.forEach(fn=>fn(value));});
+  await page.addInitScript(()=>{const listeners:Record<string,Function[]>={};(window as any).ethereum={request:async(args:any)=>{const result=await (window as any).walletRequest(args);if(result?.__bellRpcError)throw Object.assign(new Error(result.__bellRpcError.message),result.__bellRpcError);return result;},on:(name:string,fn:Function)=>(listeners[name]??=[]).push(fn),removeListener:(name:string,fn:Function)=>{listeners[name]=(listeners[name]??[]).filter(x=>x!==fn);}};(window as any).emitWallet=(event:string,value:any)=>listeners[event]?.forEach(fn=>fn(value));});
  };
  return {f,node,d,actors,input,quote,loanId,asset,policy,get ids(){return f.transactions.flatMap(t=>t.events.filter((e:any)=>e.decoded?.eventName==='OfferPosted').map((e:any)=>e.decoded.args.offerId as Hex));},sends,observe,read,send,report,attach,stop,get logs(){return f.transactions.flatMap(t=>t.events);}};
  }catch(e){await stop();throw e;}

@@ -1,0 +1,32 @@
+{
+  "url": "https://arc-studio-bb079c726d744e95a4ce8703.vercel.app",
+  "stateHttpStatus": 200,
+  "frontendDecoderPassed": true,
+  "block": {
+    "number": "71105645",
+    "hash": "0x61a0c5f72d0e38b02b809d4545eb1116e28c27fcae419a3c19d1d62ceede220b",
+    "timestamp": "1794007667"
+  },
+  "gproAssetId": "0x940f35f3c997e3e96c694a303fd43763e94b9da1a160a5a3250dfbb9711e5137",
+  "acceptedReportNextNonce": "9",
+  "reopeningPrice": "1565000",
+  "poolTotalAssets": "0",
+  "stockSymbol": "mSTOCK",
+  "frontendPublished": false,
+  "frontendPublicationStatus": "Reviewed container built in Studio; browser-connected Vercel publish still required",
+  "healthHttpStatus": 200,
+  "healthMode": "read-and-prepare",
+  "actorSigning": "connected-wallet",
+  "coldStartObserved": true,
+  "studio": {
+    "sourceUpdated": true,
+    "containerBuildPassed": true,
+    "typecheckPassed": true,
+    "frontendChecksPassed": 110,
+    "visualFixtureChecksUnavailable": 2,
+    "previewBackendUpdated": true,
+    "publicPreviewHttpStatus": 403,
+    "publicPreviewAccessVerified": false,
+    "vercelDeploymentToolAvailableToCLI": false
+  }
+}

@@ -1,5 +1,7 @@
 # Hosted wallet demo
 
+For the address-based, lender-first GoPro flow with the hosted frontend and local CRE, use [the Arc GoPro guide](GOPRO_ARC_DEMO.md). The fixed-role walkthrough below is retained as earlier deployment history; the current frontend connects arbitrary addresses.
+
 Use the corrected manifest in `deployments/arc-optional-cover.json`. Contracts, economic rules and the existing visual design are unchanged.
 
 ## Current public application

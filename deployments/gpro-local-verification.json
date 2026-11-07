@@ -1,0 +1,241 @@
+{
+  "authority": "Native local CRE simulation + historical external HTTP + real owned Anvil transactions",
+  "network": "owned local Anvil",
+  "chainId": "31337",
+  "interactiveConsentVerified": false,
+  "publicDeploymentChanged": false,
+  "historicalSymbol": "GPRO",
+  "creReports": [
+    {
+      "kind": 1,
+      "authority": "Explicit replay schedule through native CRE CLI",
+      "reportHash": "0x32aea0e95cf1003ee0d04a7bbbc77093aee8eb828bbb8be40c6c57583a789ca3",
+      "transactionHash": "0x7d1e6125dcab7eb5789fc964e89e4a2d966d7a4121a2571f354d2a865a35737d",
+      "price": "0"
+    },
+    {
+      "kind": 6,
+      "history": "origination",
+      "authority": "Historical HTTP data through native CRE CLI",
+      "reportHash": "0x85777fd4635f386c3b1c08384dc9e62479eae8ae034884b2597289753c5999aa",
+      "transactionHash": "0x86177726623971542bd84ab8155d340b7d0879d7284f48a1dd8afaedf38fd842",
+      "price": "1969900"
+    },
+    {
+      "kind": 6,
+      "history": "cover",
+      "authority": "Historical HTTP data through native CRE CLI",
+      "reportHash": "0x49cfade1344f2082dffa76bf1e951d9298a404f565dc7a2bac0885fbabedc3e0",
+      "transactionHash": "0x77e1e7822fdcc3c01df2274265f95d97fe1ab8a91bfbdcd7855a15e54b5ff554",
+      "price": "1775000"
+    },
+    {
+      "kind": 2,
+      "authority": "Explicit replay schedule through native CRE CLI",
+      "reportHash": "0x025ba94f861bdbf7443eabd2deb5409a13f9fdf3edc791260760e34aaec50092",
+      "transactionHash": "0x2bcbc76e5a61ac77923f218a49e20665fa38266d8ec3db95b8fd4dd447c47203",
+      "price": "0"
+    },
+    {
+      "kind": 3,
+      "history": "reopen",
+      "authority": "Historical HTTP data through native CRE CLI",
+      "reportHash": "0x1bdcc43a423208a9f6b8806944c3d15d8785ab74a27255eb0c41822aa5ae8386",
+      "transactionHash": "0xf4561935ec3f8fa51f18508eba0bc8fdbb33e8eec38dd200b9c00b92bb9ccd25",
+      "price": "1565000"
+    }
+  ],
+  "outcomes": [
+    {
+      "loanId": "1",
+      "receiptId": "1",
+      "buyerCash": "0",
+      "debt": "10000004"
+    },
+    {
+      "loanId": "2",
+      "receiptId": "2",
+      "buyerCash": "4052371",
+      "debt": "7747633"
+    }
+  ],
+  "transactions": [
+    {
+      "label": "scheduleAssetConfig",
+      "hash": "0x78f3d2c859e36500f0ddb0f858fc2f46593a4e40460b9d9c7b75b51ba4cb4483"
+    },
+    {
+      "label": "mint",
+      "hash": "0x0d59795781b43acfa51b64ad855f0acac17bf32e2778059c2fd36ed31e8826a7"
+    },
+    {
+      "label": "mint",
+      "hash": "0x2457849b6884f6d18fbae89932132ae11f03495aa8b94856dce211f87dcf35bd"
+    },
+    {
+      "label": "mint",
+      "hash": "0x9a4c70866d3b96fcf59c453c8378ae7578d4546db00d6bbb352f2e6e7bc1382f"
+    },
+    {
+      "label": "mint",
+      "hash": "0x778a945d192d4349378cc502ff980dfbf2f4cf456028aa39e3e0ba32135f264b"
+    },
+    {
+      "label": "mint",
+      "hash": "0xf5ac541bce8a27eb11babd52398553c5a2519230ad4ea1ab054db492b2f8707a"
+    },
+    {
+      "label": "mint",
+      "hash": "0xda541b717d3ee8dcf7c86fbe3e9da008a1d45cd980974f45799c9e7718580bdb"
+    },
+    {
+      "label": "mint",
+      "hash": "0x87364f253a311087bbd1135e05c2690153503092d8c8bcba6c861514f33e6d2c"
+    },
+    {
+      "label": "mint",
+      "hash": "0xd6d42e432885a829c4462ac132660f648a5feb7f01c4e64f5869cd8d249605f8"
+    },
+    {
+      "label": "mint",
+      "hash": "0x072fa8ab3cc4c176210cdfa99c04871eed5698e31849a412d0b8f684e3612d61"
+    },
+    {
+      "label": "mint",
+      "hash": "0x143699cdd75969bb623cb11e7ccb33a7852701fbd8667989b46540c68edd4688"
+    },
+    {
+      "label": "mint",
+      "hash": "0x4d84e80a0959848d884c77210fb3cea1b99e9a399f27b86081d67e4b84895df8"
+    },
+    {
+      "label": "mint",
+      "hash": "0x6ed6ecf74f276d2ae6cf52a4937579ae75c25b71751469b3e3d03bba3bb6e679"
+    },
+    {
+      "label": "historical-gpro-schedule",
+      "hash": "0x11f7c306a27c2aba888404516bb1c22b5ad8a557f5bc1fb9c7450223b239c515"
+    },
+    {
+      "label": "historical-gpro-schedule",
+      "hash": "0x95527f184676af8a4556f921cd89150d6e1ba33e322e651565626ba4e0ec0961"
+    },
+    {
+      "label": "historical-gpro-reopen",
+      "hash": "0x6397934879baf66c2b23738c6c0c80117a825fba2c2f7ead24a36a225a29d38d"
+    },
+    {
+      "label": "approve-deposit",
+      "hash": "0x13c16b970601bfc582f45b04cd1ec36da0e3ab08ede0f6dea9ed123bc83e72d9"
+    },
+    {
+      "label": "deposit",
+      "hash": "0xd033c17db6a70f50e4ae363c347557c3e47e61d9e17fd4caa15327926b660af2"
+    },
+    {
+      "label": "redeem",
+      "hash": "0x094277938e0d39655556e3506cd530ae71fffdb87227b8a9e16d284434b8f618"
+    },
+    {
+      "label": "approve-collateral",
+      "hash": "0x2269c8c0492bfc248395e4faef1a8469de2835b6e4f45aeee9ba0d0c0a6d232b"
+    },
+    {
+      "label": "borrow",
+      "hash": "0xbf756c31b3244dbd435d537c40e136cd73ea4ba80096469334545cacc84fc2fd",
+      "parity": true
+    },
+    {
+      "label": "borrow",
+      "hash": "0x5c102bb9e4b600fcdd18cb473d6cf49b67385f5f9bef2f7eeb82a5273b5cb06d",
+      "parity": true
+    },
+    {
+      "label": "setEligible",
+      "hash": "0x31a58c762f3ba66ed4ac45733bab14a051764d1c3b905892fc46d684f77c9fc4"
+    },
+    {
+      "label": "approve-offer",
+      "hash": "0x8734b10d01ee76c3370cdcae822c8cdb70e432ddb395aa5bd388e19c9c9b5c08"
+    },
+    {
+      "label": "postOffer",
+      "hash": "0x9bab27220994c4414628d380802a061e2322291e5953f5859a2269c723eed49a",
+      "parity": true
+    },
+    {
+      "label": "setEligible",
+      "hash": "0xb207cff7a629b8b5c9de4893347913eaf3b464a45ec18bb3cd19cc8095108ff8"
+    },
+    {
+      "label": "approve-offer",
+      "hash": "0x21beeafbfd874a20c408ee1dd6b35aae94270e2de0d30a93c522c0a115a7d7b3"
+    },
+    {
+      "label": "postOffer",
+      "hash": "0xb0a3b0a21f3f74aeb8116174438932b63dd30b2f90ffd53574fcd8330f281d7f",
+      "parity": true
+    },
+    {
+      "label": "approve-premium",
+      "hash": "0xdd9887ff4f15f86bac71b7e542a26b2131c8e4cd66d98f106dca2bf9fbbbd69a"
+    },
+    {
+      "label": "buyCover",
+      "hash": "0x9717da51266d2382ebf7d7f174356702d39bd561abb9465167f58f54f29bfada",
+      "parity": true
+    },
+    {
+      "label": "setEligible",
+      "hash": "0x785eab9a0dbe114bbd53f9afc2fc19eacf5dd4fac4541efb19f2de9cfa3d8669"
+    },
+    {
+      "label": "approve-offer",
+      "hash": "0xad025f54fd3a5cffec0eb9b711dd2dfce8d4a3ba2c8ade30b476cda272800ec4"
+    },
+    {
+      "label": "postOffer",
+      "hash": "0xde159af28e8f95c613a9a07ae8b935ef502079071405e145bba698dfd54cc2e8",
+      "parity": true
+    },
+    {
+      "label": "setEligible",
+      "hash": "0x7c0a3ed7721386b01a3c689448dd053177db36a917862a94d5fd8b8bf249207d"
+    },
+    {
+      "label": "approve-offer",
+      "hash": "0x9bc847a7b340e55187284e474944eee1bf3161228853ad414196f856d78ba1c5"
+    },
+    {
+      "label": "postOffer",
+      "hash": "0xb0e3b6e6a390448da8b4e212a1963942a0a4002830597328511ef3e6ba38bd05",
+      "parity": true
+    },
+    {
+      "label": "approve-premium",
+      "hash": "0xf14b6b98cde53d843ebe161da248fd6fd335ba64f153c99c7dcaa60ee4563be4"
+    },
+    {
+      "label": "buyCover",
+      "hash": "0x35f770797888d0335ef1a33ba3081b8c5549a065f514fbd235c3b99156ccea6e",
+      "parity": true
+    },
+    {
+      "label": "settle",
+      "hash": "0x469d010141de4a53c62f7f8d247aab34639f19ade60eeb866523a55c0b9c59c0",
+      "parity": true
+    },
+    {
+      "label": "settle",
+      "hash": "0x4c9d0089db837e0d63e7eddf5b09ce11d1849953bb058ed4f157391ce6a96c32",
+      "parity": true
+    }
+  ],
+  "archiveSha256": {
+    "twelve-cover.json": "b5a8dd28ef15a40f7cc0544634966c2b760ba740fc5dbb34a2fdb3eea875e716",
+    "twelve-daily.json": "d842cdbad7e087931f2cf366bb0e75701d5b327bae005fa42f8c74dcc721da7a",
+    "twelve-origination.json": "e19bee824ac38b4e6d5cd3b42a00908d1925be9175d6cc5bacdf9eb1856d6a06",
+    "yahoo-daily.json": "ffcd181836a7cc615c3c85e591dfb6c1c340c54949bef0a89b102a4dd57a8443",
+    "yahoo-hourly.json": "c41ffe2eb0f93e951cf21cdb9f0a70c61ad2d299e86377ade603816c5e851619"
+  }
+}
