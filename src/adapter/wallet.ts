@@ -5,6 +5,7 @@ export interface Provider {request(args:{method:string;params?:unknown[]}):Promi
 export interface Manifest {chainId:string;deploymentBlock:string;addresses:Record<string,Address>;codeHashes:Record<string,Hex>}
 export type Intent={approval:string;amount:string}|{contract:string;method:string;args:unknown[]}|{settlement:'settle'|'terminalSettle';receiptId:string};
 export interface Unsigned {chainId:string;from:Address;to:Address;data:Hex;value:string;sourceBlock:string;sourceBlockHash:Hex}
+export interface TransactionProgress {phase:'signature'|'submitted'|'confirmed';hash?:Hex}
 const lanes:Record<string,string[]>={pool:['deposit','redeem'],book:['postOffer','cancelOffer','withdrawPremium','withdrawCashCredit'],loanManager:['borrow','repay','addCollateral','withdrawCollateral','liquidate','topUpBacking','finalizeHandoff'],manager:['buyCover'],vault:['withdrawClaim']};
 const approvals:Record<string,[string,string]>={deposit:['cash','pool'],offer:['cash','book'],premium:['cash','book'],repay:['cash','loanManager'],collateral:['stock','vault'],backing:['stock','vault']};
 export function argument(p:AbiParameter,value:any):any{
@@ -21,23 +22,41 @@ export function encode(contract:string,method:string,args:unknown[]):Hex{
   if(!fn||fn.type!=='function'||!Array.isArray(args)||args.length!==fn.inputs.length)throw Error('Exact ABI arguments required');
   return encodeFunctionData({abi:abi!,functionName:method,args:fn.inputs.map((p,i)=>argument(p,args[i]))});
 }
+export class WalletAccountMismatchError extends Error {
+  constructor(readonly actualAddress:string,readonly expectedAddress:string){
+    super(`Wallet account ${actualAddress} is not the selected actor ${expectedAddress} · switch account in the wallet and reconnect`);
+    this.name='WalletAccountMismatchError';
+  }
+}
 export class Wallet{
   account:Address|undefined;chainId:bigint|undefined;verified=false;private generation=0;private busy=false;
   private changed=()=>{this.account=undefined;this.chainId=undefined;this.verified=false;this.generation++;this.onChange();};
+  private authorization:{generation:number;account?:string}|undefined;
+  private accountsChanged=(accounts:unknown)=>{
+    // A matching first access grant is expected. Later account changes still invalidate everything.
+    if(this.authorization?.generation===this.generation&&!this.account&&Array.isArray(accounts)&&typeof accounts[0]==='string'&&/^0x[0-9a-fA-F]{40}$/.test(accounts[0])){
+      this.authorization.account=accounts[0].toLowerCase();return;
+    }
+    this.changed();
+  };
   /** `actor` is the selected actor's public address: when set, no other account can connect or sign. */
-  constructor(private provider:Provider,private rpc:any,readonly manifest:Manifest,private onChange=()=>{},readonly actor?:Address){for(const event of ['accountsChanged','chainChanged','disconnect'])provider.on?.(event,this.changed);}
-  dispose(){for(const event of ['accountsChanged','chainChanged','disconnect'])this.provider.removeListener?.(event,this.changed);this.changed();}
+  constructor(private provider:Provider,private rpc:any,readonly manifest:Manifest,private onChange=()=>{},readonly actor?:Address){provider.on?.('accountsChanged',this.accountsChanged);for(const event of ['chainChanged','disconnect'])provider.on?.(event,this.changed);}
+  dispose(){this.provider.removeListener?.('accountsChanged',this.accountsChanged);for(const event of ['chainChanged','disconnect'])this.provider.removeListener?.(event,this.changed);this.changed();}
   async connect(){
     const generation=++this.generation;this.account=undefined;this.chainId=undefined;this.verified=false;
+    const authorization:{generation:number;account?:string}={generation};this.authorization=authorization;
     try{
       const accounts=await this.provider.request({method:'eth_requestAccounts'});
+      if(this.authorization===authorization)this.authorization=undefined;
       if(generation!==this.generation)throw Error('Wallet changed while connecting');
-      if(!accounts[0]||!/^0x[0-9a-fA-F]{40}$/.test(accounts[0]))throw Error('Connect a wallet account');
-      if(this.actor&&accounts[0].toLowerCase()!==this.actor.toLowerCase())throw Error(`Wallet account ${accounts[0].toLowerCase()} is not the selected actor ${this.actor.toLowerCase()} · switch account in the wallet and reconnect`);
-      this.account=accounts[0].toLowerCase();await this.identity();await this.verify();
+      if(!Array.isArray(accounts)||typeof accounts[0]!=='string'||!/^0x[0-9a-fA-F]{40}$/.test(accounts[0]))throw Error('Connect a wallet account');
+      if(authorization.account&&authorization.account!==accounts[0].toLowerCase())throw Error('Wallet changed while connecting');
+      if(this.actor&&accounts[0].toLowerCase()!==this.actor.toLowerCase())throw new WalletAccountMismatchError(accounts[0].toLowerCase(),this.actor.toLowerCase());
+      this.account=accounts[0].toLowerCase() as Address;await this.identity();await this.verify();
       if(generation!==this.generation)throw Error('Wallet changed while connecting');
       this.verified=true;return this.account;
     }catch(error){if(generation===this.generation){this.account=undefined;this.chainId=undefined;this.verified=false;}throw error;}
+    finally{if(this.authorization===authorization)this.authorization=undefined;}
   }
   private async identity(){
     if(!this.account)throw Error('Connect wallet after account or chain changed');
@@ -63,7 +82,7 @@ export class Wallet{
     else{({contract,method,args}=intent);if(!lanes[contract]?.includes(method))throw Error('Actor method unavailable');}
     return {to:this.manifest.addresses[contract]!,data:encode(contract,method,args)};
   }
-  async send(intent:Intent,unsigned:Unsigned,refresh:(minimum:bigint)=>Promise<void>){
+  async send(intent:Intent,unsigned:Unsigned,refresh:(minimum:bigint)=>Promise<void>,progress:(event:TransactionProgress)=>void=()=>{}){
     if(this.busy)throw Error('Transaction already pending');this.busy=true;const generation=this.generation;
     try{
       await this.identity();const expected=this.expected(intent);
@@ -71,12 +90,14 @@ export class Wallet{
       await this.verify(uint(unsigned.sourceBlock),unsigned.sourceBlockHash);
       await this.rpc.call({account:this.account,to:expected.to,data:expected.data,value:0n});
       await this.identity();if(generation!==this.generation)throw Error('Wallet changed');
+      progress({phase:'signature'});
       const hash:Hex=await this.provider.request({method:'eth_sendTransaction',params:[{from:this.account,to:expected.to,data:expected.data,value:'0x0',chainId:`0x${uint(this.manifest.chainId).toString(16)}`}]});
+      progress({phase:'submitted',hash});
       let replacementError=false;
       const receipt=await this.rpc.waitForTransactionReceipt({hash,onReplaced:(replacement:any)=>{const tx=replacement.transaction;replacementError ||= replacement.reason==='cancelled'||tx.from?.toLowerCase()!==this.account||tx.to?.toLowerCase()!==expected.to.toLowerCase()||tx.input?.toLowerCase()!==expected.data.toLowerCase()||tx.value!==0n;}});
       if(replacementError)throw Error('Transaction cancelled or replaced with different intent');if(receipt.status!=='success')throw Error('Transaction reverted');
       if((await this.rpc.getBlock({blockNumber:receipt.blockNumber})).hash!==receipt.blockHash)throw Error('Receipt no longer canonical');
-      await this.identity();if(generation!==this.generation)throw Error('Wallet changed while pending');await refresh(receipt.blockNumber);return receipt;
+      await this.identity();if(generation!==this.generation)throw Error('Wallet changed while pending');progress({phase:'confirmed',hash:receipt.transactionHash??hash});await refresh(receipt.blockNumber);return receipt;
     }finally{this.busy=false;}
   }
 }

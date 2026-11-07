@@ -4,7 +4,7 @@ import {abis} from '@/generated/abis';
 import {json} from '@/adapter/transport';
 import {amount} from '@/state/truth';
 import {hashBundle} from '@/adapter/actions';
-const button="[font-family:inherit] text-[11px] tracking-[0.14em] py-2.25 px-3 border border-line rounded-[10px] cursor-pointer hover:border-ink bg-transparent text-ink";
+const button="[font-family:inherit] text-[12px] tracking-[0.14em] py-2.25 px-3 border border-line rounded-[10px] cursor-pointer hover:border-ink bg-transparent text-ink";
 const input="w-full [font-family:inherit] text-[12px] text-ink bg-transparent border border-line rounded-[10px] p-3";
 /** Exact actor inputs stay inside the established panel geometry. */
 export function ActorTools({role}:{role:'borrower'|'buyer'|'lender'}){
@@ -16,7 +16,7 @@ export function ActorTools({role}:{role:'borrower'|'buyer'|'lender'}){
   const fields=(fn?.inputs[role==='buyer'?0:1]?.components??[]).map((x:any)=>`${x.name}: ${x.type}`).join('\n');
   let review='Complete consent and select whole lots to review the exact transaction hash.';
   if(role==='borrower'&&v.quoteText&&v.selected.length&&c.manifest)try{review=hashBundle(c.manifest.chainId,c.manifest.addresses.manager,JSON.parse(v.quoteText),v.selected,v.selected.map((id:string)=>v.frame?.state.termsHashes[id]));}catch{review='Consent is incomplete or malformed. No transaction is ready.';}
-  return <details className="text-[10px] tracking-[0.16em] text-muted" open={v.workflow.walletPanelOpen} onToggle={e=>{const open=e.currentTarget.open;if(open!==v.workflow.walletPanelOpen)v.workflow.onWalletPanel(open);}}>
+  return <details className="text-[12px] tracking-[0.16em] text-muted" open={v.workflow.walletPanelOpen} onToggle={e=>{const open=e.currentTarget.open;if(open!==v.workflow.walletPanelOpen)v.workflow.onWalletPanel(open);}}>
     <summary className="cursor-pointer tracking-[0.12em]">WALLET & EXACT INPUTS</summary>
     <div className="flex flex-col gap-3 pt-3">
       <span>{v.labels.network} · {v.labels.source} · {v.labels.clock}</span>
@@ -24,8 +24,7 @@ export function ActorTools({role}:{role:'borrower'|'buyer'|'lender'}){
       <span>{v.labels.receiver}</span>
       <span>{c.manifest?.chainId==='31337'?'LOCAL MOCK STOCK · TEST CASH':'STOCK CLASSIFICATION UNVERIFIED'}{c.manifest?.chainId==='5042002'&&c.manifest.addresses.cash?.toLowerCase()==='0x3600000000000000000000000000000000000000'?' · ARC TESTNET USDC':''}</span>
       <span>NATIVE GAS (18 DECIMALS) · {amount(v.frame?.state.balances?.[v.account]?.nativeGas,18)}</span>
-      <label>ACTOR<select className={input} aria-label="Actor" value={v.wallet.actorKey} onChange={e=>c.chooseActor(e.target.value)}><option value="">SELECT ACTOR</option>{v.wallet.actors.map((a:any)=><option key={a.key} value={a.key}>{a.label}</option>)}</select></label>
-      <span data-provenance="expected-address">{v.wallet.expectedAddress?`EXPECTED ACCOUNT · ${v.wallet.expectedAddress}`:'EXPECTED ACCOUNT · SELECT AN ACTOR'}</span>
+      <span data-provenance="expected-address">{v.wallet.expectedAddress?`EXPECTED ACCOUNT · ${v.wallet.expectedAddress}`:'ACCOUNT · CONNECT YOUR WALLET'}</span>
       <label>WALLET<select className={input} aria-label="Wallet provider" value={v.wallet.providerId} onChange={e=>c.chooseProvider(e.target.value)}><option value="">SELECT WALLET</option>{v.wallet.providerOptions.map((p:any)=><option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
       {v.wallet.providerOptions.length===0&&<span>NO WALLET DISCOVERED · INSTALL OR UNLOCK METAMASK OR RABBY</span>}
       <button className={button} onClick={()=>void c.run(()=>c.connect())}>{v.account?'RECONNECT WALLET':'CONNECT WALLET'}</button>

@@ -1,14 +1,4 @@
-import type {Address} from 'viem';
 import type {Provider} from './wallet.ts';
-/** Public demo actors. Roles are never tied to a wallet extension: the user picks both. */
-export const ACTORS = [
-  {key:'alice',label:'ALICE · BORROWER',address:'0x3e09f39d6c3fcc3372d35c304f3435317360ef4b' as Address},
-  {key:'rahul',label:'RAHUL · BUYER',address:'0x6da05b79d241f08a1556f7ded69ef3e74b520eca' as Address},
-  {key:'meera',label:'MEERA · BUYER',address:'0x51af7c2a4b952767dff9028d4415252bdde93f30' as Address},
-  {key:'lender',label:'LENDER',address:'0xe3f075487d5ffb5bd7abe81d11f7927b8b8df51d' as Address},
-] as const;
-export type ActorKey = typeof ACTORS[number]['key'];
-export const actorByKey = (key:string) => ACTORS.find(actor => actor.key === key);
 export const FALLBACK_ID = 'window.ethereum';
 export interface DiscoveredProvider {id:string;name:string;rdns:string;provider:Provider}
 /** Validates one EIP-6963 announcement. It never calls the provider. */

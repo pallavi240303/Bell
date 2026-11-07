@@ -17,6 +17,17 @@ async function setup(){
   const unsigned:any={chainId:'31337',from:account,to:addresses.pool,data:encodeFunctionData({abi:abis.pool,functionName:'deposit',args:[2000000n]}),value:'0',sourceBlock:'7',sourceBlockHash:hash};
   return {m,abis,client,rpc,provider,calls,manifest,intent,unsigned,listeners,setReceipt:(r:any)=>receipt=r,setAccounts:(a:string[])=>accounts=a,setChain:(c:string)=>chain=c};
 }
+test('transaction progress exposes submitted hash before receipt and confirmation before index refresh',async()=>{
+ const x=await setup(),stages:any[]=[];
+ x.rpc.waitForTransactionReceipt=async()=>{assert.equal(stages.at(-1).phase,'submitted');assert.equal(stages.at(-1).hash,hash);return {status:'success',blockNumber:7n,blockHash:hash,transactionHash:hash};};
+ await x.client.send(x.intent,x.unsigned,async()=>{assert.equal(stages.at(-1).phase,'confirmed');},(event:any)=>stages.push(event));
+ assert.deepEqual(stages.map(e=>e.phase),['signature','submitted','confirmed']);
+});
+test('confirmed receipt remains observable when snapshot refresh fails',async()=>{
+ const x=await setup(),stages:any[]=[];
+ await assert.rejects(()=>x.client.send(x.intent,x.unsigned,async()=>{throw Error('index unavailable');},(event:any)=>stages.push(event)),/index unavailable/);
+ assert.equal(stages.at(-1).phase,'confirmed');assert.equal(stages.at(-1).hash,hash);
+});
 test('verified deposit simulates, requests one wallet transaction, and refreshes at its receipt block',async()=>{
   const x=await setup();let min=0n;await x.client.send(x.intent,x.unsigned,async(b:bigint)=>{min=b;});
   assert.equal(min,7n);assert.equal(x.calls.filter(c=>c.method==='eth_sendTransaction').length,1);

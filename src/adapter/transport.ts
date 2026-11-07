@@ -83,7 +83,7 @@ export class Transport{
       await new Promise(resolve=>setTimeout(resolve,(attempt+1)*1000));
     }
   }
-  async state(account?:string){return decodeFrame(await this.request(`/state${account?`?watch=${encodeURIComponent(account)}`:''}`));}
+  async state(account?:string|string[]){const accounts=Array.isArray(account)?account:account?[account]:[];return decodeFrame(await this.request(`/state${accounts.length?'?'+accounts.map(address=>`watch=${encodeURIComponent(address)}`).join('&'):''}`));}
   manifest(){return this.request('/manifest');}
   async events(block:Block){return decodeEvidence(await this.request(`/events?blockNumber=${block.number}&blockHash=${block.hash}`));}
   prepare(input:unknown){return this.request('/prepare',input);}
