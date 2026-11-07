@@ -6,6 +6,7 @@ import { observeLive, observeReplay, readArcState } from './adapters.ts';
 import { readAbi } from './abi.ts';
 import { stateSchema, type Config, type ArcState } from './schema.ts';
 import { observeQuoteSnapshot, quoteRequest } from './quotes.ts';
+import {observeHistorical, historicalRequest, historicalPoint} from './historical.ts';
 import { InvocationBudget, checkedObservation, checkedRequest } from './budget.ts';
 export function runWorkflow(runtime: Runtime<Config>): RunResult {
     try {
@@ -72,7 +73,23 @@ export function runWorkflow(runtime: Runtime<Config>): RunResult {
                 if (!snapshotAssetData || assetData !== snapshotAssetData) throw new Error('ARC_STATE_INCONSISTENT');
                 return snapshot;
             },
-            observe: () => c.dataSource === 'quote-snapshot' ? observeQuoteSnapshot(c, provider => {
+            observe: () => c.dataSource === 'gpro-history' ? (() => {
+                if (!c.historical) throw new Error('HISTORY_CONFIG');
+                runtime.log(JSON.stringify({authority:'HISTORICAL_HTTP_REPLAY', historical:historicalPoint(c.historical.stage), clock:'explicit simulated session; not a live quote'}));
+                return observeHistorical(c, provider => {
+                    let secret: string | undefined;
+                    if (provider === 'primary') {
+                        secret = secrets.get('TWELVEDATA_API_KEY');
+                        if (secret === undefined) {
+                            budget.take('secret');
+                            try { secret = runtime.getSecret({id:'TWELVEDATA_API_KEY'}).result().value; }
+                            catch { throw new Error('QUOTE_SECRET_UNAVAILABLE'); }
+                            secrets.set('TWELVEDATA_API_KEY', secret);
+                        }
+                    }
+                    return request(historicalRequest(provider,c,secret));
+                });
+            })() : c.dataSource === 'quote-snapshot' ? observeQuoteSnapshot(c, provider => {
                 if (!c.quote) throw new Error('QUOTE_BINDING');
                 const id = c.quote.secretIds[provider];
                 let secret = secrets.get(id);

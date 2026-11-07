@@ -53,6 +53,7 @@ export type Decision = {
 };
 export function validateConfig(input: unknown): Config {
     const c = configSchema.parse(input);
+    requireThat(c.dataSource !== 'gpro-history' || c.mode === 'replay' && !!c.historical, 'HISTORY_REPLAY_ONLY');
     for (const h of [c.assetId, c.sessionId, c.workflowId])
         requireThat(h !== zeroHash, 'CONFIG_IDENTITY');
     for (const a of [c.oracle, c.registry, c.liveReceiver, c.simulationReceiver, c.liveForwarder, c.simulationForwarder, c.workflowOwner])

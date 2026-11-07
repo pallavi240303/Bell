@@ -21,7 +21,8 @@ const publicHttps = z.string().refine(value => { try { httpsOrigin(value); retur
 const endpoint = z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/), url: publicHttps }).strict();
 export const configSchema = z.object({
     mode: z.enum(['live', 'replay']), chainName: z.string().min(1), chainSelector: uint, chainId: uint,
-    dataSource: z.literal('quote-snapshot').optional(),
+    dataSource: z.enum(['quote-snapshot', 'gpro-history']).optional(),
+    historical: z.object({ stage: z.enum(['origination', 'cover', 'reopen']) }).strict().optional(),
     quote: z.object({ symbol: z.literal('NVDA'), assetId: bytes32, sessionId: bytes32, secretIds: z.object({ finnhub: z.literal('FINNHUB_API_KEY'), twelvedata: z.literal('TWELVEDATA_API_KEY') }).strict() }).strict().optional(),
     oracle: address, registry: address, configVersion: uint, assetId: bytes32, sessionId: bytes32, referenceSessionId: bytes32,
     liveReceiver: address, simulationReceiver: address, liveForwarder: address, simulationForwarder: address,

@@ -1,0 +1,62 @@
+{
+  "meta": {
+    "symbol": "GPRO",
+    "interval": "1day",
+    "currency": "USD",
+    "exchange_timezone": "America/New_York",
+    "exchange": "NASDAQ",
+    "mic_code": "XNGS",
+    "type": "Common Stock"
+  },
+  "values": [
+    {
+      "datetime": "2026-08-31",
+      "open": "0.61000001",
+      "high": "0.88000000",
+      "low": "0.60000002",
+      "close": "0.87599999",
+      "volume": "220002900"
+    },
+    {
+      "datetime": "2026-09-01",
+      "open": "1.35000",
+      "high": "1.64000",
+      "low": "1.16000",
+      "close": "1.23000",
+      "volume": "500399100"
+    },
+    {
+      "datetime": "2026-09-02",
+      "open": "1.22000",
+      "high": "1.79000",
+      "low": "1.18000",
+      "close": "1.69000",
+      "volume": "280458800"
+    },
+    {
+      "datetime": "2026-09-03",
+      "open": "1.78000",
+      "high": "1.82000",
+      "low": "1.36000",
+      "close": "1.39000",
+      "volume": "179025100"
+    },
+    {
+      "datetime": "2026-09-04",
+      "open": "1.48000",
+      "high": "2.050000",
+      "low": "1.41000",
+      "close": "1.70000",
+      "volume": "285136100"
+    },
+    {
+      "datetime": "2026-09-08",
+      "open": "1.56500",
+      "high": "1.58000",
+      "low": "1.41000",
+      "close": "1.45500",
+      "volume": "93712800"
+    }
+  ],
+  "status": "ok"
+}
