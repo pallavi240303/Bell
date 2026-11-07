@@ -2,6 +2,28 @@
 @layer theme, base, components, utilities;
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities);
+@import './workspace.css';
+
+/* Semantic shadcn tokens reuse the BELL light palette. */
+@theme inline {
+  --color-background: var(--canvas);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--soft);
+  --color-secondary-foreground: var(--text);
+  --color-muted-foreground: var(--subtle);
+  --color-accent: var(--soft);
+  --color-accent-foreground: var(--text);
+  --color-border: var(--stroke);
+  --color-input: var(--stroke);
+  --color-ring: #a99ff1;
+  --color-destructive: #a34747;
+}
 
 @font-face {
   font-family: 'Gridular';
@@ -80,10 +102,4 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-}
-
-/* The target cursor replaces the system pointer everywhere on fine-pointer devices. */
-html.cursor-none-all,
-html.cursor-none-all * {
-  cursor: none !important;
 }

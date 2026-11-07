@@ -1,101 +1,23 @@
-import { Fragment } from 'react';
-import { Icon } from '@/components/ui/Icon';
-import { useBell } from '@/state/useBell';
+import {RefreshCw} from 'lucide-react';
+import {useBell} from '@/state/useBell';
+import {Button,InfoTip,Metric,ExplorerLink,SelectField} from '@/components/ui/Controls';
+import {Card} from '@/components/ui/card';
+import {shortAddress} from '@/state/presentation';
 
-/** Read-only deployment and report evidence. */
-export function ControlPage() {
-  const v = useBell();
-  return (
-    <main className="max-w-380 my-0 mx-auto pt-9 px-[clamp(16px,_3vw,_40px)] pb-20 flex flex-col gap-7 [animation:pageIn_240ms_cubic-bezier(0.22,1,0.36,1)]">
-      <div className="flex flex-col gap-2.5">
-        <span className="text-[11px] tracking-[0.2em] text-muted">
-          CONTROL · READ-ONLY EVIDENCE
-        </span>
-        <h1 className="m-0 text-[clamp(22px,_3.2vw,_34px)] font-normal">
-          Inspect contract truth and supplied report evidence.
-        </h1>
-        <span className="text-[11px] tracking-[0.14em] text-faint">
-          CONNECTED WALLET · NO REPORT OR TOKEN AUTHORITY
-        </span>
-      </div>
-      <div className="grid grid-cols-[repeat(auto-fit,_minmax(min(100%,_380px),_1fr))] gap-6">
-        <section className="relative border border-line-soft bg-panel p-6 flex flex-col gap-5 min-w-0 rounded-[16px] before:content-[''] before:absolute before:-top-0.25 before:-left-0.25 before:w-2.5 before:h-2.5 before:border-t before:border-t-ink before:border-l before:border-l-ink before:pointer-events-none after:content-[''] after:absolute after:-bottom-0.25 after:-right-0.25 after:w-2.5 after:h-2.5 after:border-b after:border-b-ink after:border-r after:border-r-ink after:pointer-events-none" data-spot="rgba(61,59,243,0.10)" aria-label="Session">
-          <span className="text-[11px] tracking-[0.2em] text-muted">
-            SESSION · EVENT {v.evNum}
-          </span>
-          <span className="text-[15px] tracking-[0.06em]">
-            {v.evTitle}
-          </span>
-          <div className="flex flex-wrap gap-2.5">
-            <button className="[font-family:inherit] text-[12px] tracking-[0.16em] text-ink bg-transparent [background-image:linear-gradient(#3D3BF3,#3D3BF3)] [background-repeat:no-repeat] [background-size:0%_100%] border border-ink rounded-[10px] inline-flex items-center justify-center gap-2.5 py-3 px-4.5 cursor-pointer [transition:background-size_450ms_cubic-bezier(0.22,1,0.36,1),_color_450ms] hover:[background-size:100%_100%] hover:text-white hover:border-indigo active:[transform:translateY(1px)]" onClick={v.onPrev}>
-              <Icon name="arrow-left" />
-              {' '}BACK
-            </button>
-            <button className="[font-family:inherit] text-[12px] tracking-[0.16em] text-ink bg-transparent [background-image:linear-gradient(#3D3BF3,#3D3BF3)] [background-repeat:no-repeat] [background-size:0%_100%] border border-ink rounded-[10px] inline-flex items-center justify-center gap-2.5 py-3 px-4.5 cursor-pointer [transition:background-size_450ms_cubic-bezier(0.22,1,0.36,1),_color_450ms] hover:[background-size:100%_100%] hover:text-white hover:border-indigo active:[transform:translateY(1px)]" onClick={v.onAdvance}>
-              REFRESH{' '}
-              <Icon name="arrow-right" />
-            </button>
-          </div>
-          <div className="flex flex-col gap-2.5 border-t border-t-line-soft pt-4.5">
-            <span className="text-[10px] tracking-[0.18em] text-muted">
-              ACCEPTED STATE
-            </span>
-            <div className="flex flex-wrap gap-2">
-              {v.statusOpts.map((s: any, i: number) => (
-                <Fragment key={i}>
-                  <button className="[font-family:inherit] text-[11px] tracking-[0.14em] py-2.25 px-3 border border-line rounded-[10px] cursor-pointer hover:border-ink" style={{ color: s.fg, background: s.bg }} onClick={s.go} aria-pressed={s.aria === 'true'}>
-                    {s.label}
-                  </button>
-                </Fragment>
-              ))}
-            </div>
-          </div>
-        </section>
-        <section className="relative border border-line-soft bg-panel p-6 flex flex-col gap-5 min-w-0 rounded-[16px] before:content-[''] before:absolute before:-top-0.25 before:-left-0.25 before:w-2.5 before:h-2.5 before:border-t before:border-t-ink before:border-l before:border-l-ink before:pointer-events-none after:content-[''] after:absolute after:-bottom-0.25 after:-right-0.25 after:w-2.5 after:h-2.5 after:border-b after:border-b-ink after:border-r after:border-r-ink after:pointer-events-none" data-spot="rgba(61,59,243,0.10)" aria-label="Stock price">
-          <span className="text-[11px] tracking-[0.2em] text-muted">
-            LATEST REFERENCE · {v.controlReferenceFmt}
-          </span>
-          <label className="flex flex-col gap-1.5 relative">
-            <span className="text-[10px] tracking-[0.18em] text-muted">
-              REFRESH PRICE
-            </span>
-            <input className="w-full [font-family:inherit] text-[26px] font-light text-ink bg-transparent border-0 border-current border-b border-b-line pt-2 pr-17.5 pb-2 pl-0 outline-none [caret-color:#EDECE8] [caret-shape:block] rounded-none focus:[border-bottom-color:#EDECE8] focus:[background-image:repeating-linear-gradient(0deg,_rgba(255,255,255,0.06)_0px,_rgba(255,255,255,0.06)_1px,_transparent_1px,_transparent_3px)]" inputMode="decimal" placeholder="0.00" value={v.controlReferenceFmt} readOnly />
-            <span className="absolute right-0 bottom-3.5 text-[11px] tracking-[0.16em] text-muted pointer-events-none">
-              USDC
-            </span>
-          </label>
-          <div className="flex flex-wrap gap-2.5">
-            <button className="[font-family:inherit] text-[12px] tracking-[0.16em] text-ink bg-transparent [background-image:linear-gradient(#3D3BF3,#3D3BF3)] [background-repeat:no-repeat] [background-size:0%_100%] border border-ink rounded-[10px] inline-flex items-center justify-center gap-2.5 py-3 px-4.5 cursor-pointer [transition:background-size_450ms_cubic-bezier(0.22,1,0.36,1),_color_450ms] hover:[background-size:100%_100%] hover:text-white hover:border-indigo active:[transform:translateY(1px)]" onClick={v.onSetPrice}>
-              REFRESH PRICE
-            </button>
-            <button className="[font-family:inherit] text-[12px] tracking-[0.16em] text-ink bg-transparent [background-image:linear-gradient(#3D3BF3,#3D3BF3)] [background-repeat:no-repeat] [background-size:0%_100%] border border-ink rounded-[10px] inline-flex items-center justify-center gap-2.5 py-3 px-4.5 cursor-pointer [transition:background-size_450ms_cubic-bezier(0.22,1,0.36,1),_color_450ms] hover:[background-size:100%_100%] hover:text-white hover:border-indigo active:[transform:translateY(1px)]" onClick={v.onClearPrice}>
-              REFRESH EVIDENCE
-            </button>
-          </div>
-        </section>
-        <section className="relative border border-line-soft bg-panel p-6 flex flex-col gap-5 min-w-0 rounded-[16px] before:content-[''] before:absolute before:-top-0.25 before:-left-0.25 before:w-2.5 before:h-2.5 before:border-t before:border-t-ink before:border-l before:border-l-ink before:pointer-events-none after:content-[''] after:absolute after:-bottom-0.25 after:-right-0.25 after:w-2.5 after:h-2.5 after:border-b after:border-b-ink after:border-r after:border-r-ink after:pointer-events-none" data-spot="rgba(61,59,243,0.10)" aria-label="Token">
-          <span className="text-[11px] tracking-[0.2em] text-muted">
-            {v.stockSymbol} TOKEN
-          </span>
-          <span className="text-[22px]" style={{ color: v.tokenColor }}>
-            {v.tokenState}
-          </span>
-          <button className="[font-family:inherit] text-[12px] tracking-[0.16em] text-ink bg-transparent [background-image:linear-gradient(#3D3BF3,#3D3BF3)] [background-repeat:no-repeat] [background-size:0%_100%] border border-ink rounded-[10px] inline-flex items-center justify-center gap-2.5 py-3 px-4.5 cursor-pointer [transition:background-size_450ms_cubic-bezier(0.22,1,0.36,1),_color_450ms] hover:[background-size:100%_100%] hover:text-white hover:border-indigo active:[transform:translateY(1px)]" onClick={v.onTogglePause}>
-            {v.pauseLabel}
-          </button>
-        </section>
-        <section className="relative border border-line-soft bg-panel p-6 flex flex-col gap-5 min-w-0 rounded-[16px] before:content-[''] before:absolute before:-top-0.25 before:-left-0.25 before:w-2.5 before:h-2.5 before:border-t before:border-t-ink before:border-l before:border-l-ink before:pointer-events-none after:content-[''] after:absolute after:-bottom-0.25 after:-right-0.25 after:w-2.5 after:h-2.5 after:border-b after:border-b-ink after:border-r after:border-r-ink after:pointer-events-none" data-spot="rgba(61,59,243,0.10)" aria-label="Reset">
-          <span className="text-[11px] tracking-[0.2em] text-muted">
-            SOURCE · {v.scLabel}
-          </span>
-          <span className="text-[13px] leading-[1.6] text-muted">
-            Reads the canonical snapshot. Report forwarding, token controls and clock changes remain outside the browser.
-          </span>
-          <button className="[font-family:inherit] text-[12px] tracking-[0.16em] text-loss bg-transparent [background-image:linear-gradient(#DC2626,#DC2626)] [background-repeat:no-repeat] [background-size:0%_100%] border border-loss-deep rounded-[10px] py-3 px-4.5 cursor-pointer [transition:background-size_450ms_cubic-bezier(0.22,1,0.36,1),_color_450ms] hover:[background-size:100%_100%] hover:text-white hover:border-indigo active:[transform:translateY(1px)]" onClick={v.onReset}>
-            REFRESH
-          </button>
-        </section>
-      </div>
-    </main>
-  );
+/** Read-only evidence; privileged market operations stay with the operator. */
+export function ControlPage(){
+ const v=useBell(),c=v.controller,events=c.events.filter((e:any)=>e.decoded?.eventName==='MarketEventAccepted');
+ return <main className="bell-workspace">
+  <div className="workspace-heading"><div><span className="eyebrow">Source of truth</span><h1>Activity</h1></div><Button variant="secondary" disabled={v.loading||v.pending} onClick={v.workflow.onRefresh}><RefreshCw size={15}/>Refresh</Button></div>
+  {v.workflow.assetOptions.length>1&&<SelectField label="Asset" value={v.workflow.assetId} onChange={value=>v.workflow.onAsset({target:{value}})} options={[{value:'',label:'Choose an asset'},...v.workflow.assetOptions.map((a:any)=>({value:a.id,label:a.label}))]}/>}
+  <div className="workspace-grid"><Card className="position-card">
+   <div className="card-heading"><h2>Accepted chain state</h2><InfoTip>The browser reads accepted reports. CRE simulation and report delivery run through the operator.</InfoTip></div>
+   <div className="metrics three"><Metric label="Reference price" value={v.controlReferenceFmt} unit="USDC" help="Latest accepted reference for the selected asset. A dash means no report is available; it is not a zero price."/><Metric label="Stock token" value={v.stockSymbol} help="Symbol read from the selected asset’s token contract."/><Metric label="Token transfers" value={v.tokenState==='TRANSFERS ENABLED'?'Not paused':v.tokenState==='UNAVAILABLE'?'Unavailable':'Paused'} help="The token contract’s pause flag. An unpaused token can still restrict individual recipients."/></div>
+   <div className="summary-row"><span>Network</span><strong>{c.manifest?.chainId==='5042002'?'Arc Testnet':c.manifest?.chainId==='31337'?'Local Anvil':'Unavailable'}</strong></div>
+   <div className="summary-row"><span>Verified block</span><strong>{v.frame?.block.number?.toString()??'Unavailable'}</strong></div>
+   <div className="summary-row"><span>Cover window (UTC)</span><strong>{v.workflow.coverWindow}</strong></div>
+   <p className="fine-print">{v.labels.receiver}</p>
+  </Card><Card className="session-card"><div className="card-heading"><h2>Contracts</h2><InfoTip>Addresses from the connected deployment manifest. Each link opens that contract on the explorer.</InfoTip></div>{Object.entries(c.manifest?.addresses??{}).map(([key,address])=><div className="summary-row" key={key}><span>{key}</span>{c.manifest?.chainId==='5042002'?<a title={address as string} href={`https://explorer.testnet.arc.io/address/${address}`} target="_blank" rel="noreferrer">{shortAddress(address as string)}</a>:<strong title={address as string}>{shortAddress(address as string)}</strong>}</div>)}</Card></div>
+  <section className="activity-section"><h2>Accepted market reports</h2>{!events.length?<p className="helper">No report evidence is available in this snapshot.</p>:[...events].reverse().map((e:any)=><div className="activity-row" key={`${e.transactionHash}:${e.logIndex}`}><span>Market report accepted</span><span className="muted">Block {e.blockNumber.toString()}</span><ExplorerLink hash={e.transactionHash}/></div>)}</section>
+ </main>;
 }
