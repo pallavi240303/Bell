@@ -129,14 +129,26 @@ export function createDeploymentServer({deployment, client, indexPath, distDir, 
   const distRoot = realpathSync(distDir);
   const status = {phase: 'starting', error: undefined};
   let api, store;
+  let verifyTimer;
+  const verified=Promise.race([verifyDeployment(client,deployment),new Promise((_,reject)=>{verifyTimer=setTimeout(()=>reject(Error('startup timeout')),startupTimeoutMs);})]).finally(()=>clearTimeout(verifyTimer));
+  const basicApi=createApi({manifest:()=>deployment,prepare:input=>prepareActor(deployment,undefined,input,client)});
   const startup = (async () => {
     // Same startup order as the keeper CLI: verify the deployment on the live chain, then open the single-writer store.
-    await verifyDeployment(client, deployment);
+    await verified;
     if (status.phase === 'failed') throw Error('startup timeout');
     store = new Store(indexPath, deployment);
     const index = new Indexer(store, client, async (_block, logs) => ({discoveryOnly: true, logCount: logs.length}), deployment.chainId === EXPECTED_CHAIN_ID ? {discovery:'finalized'} : undefined);
     status.phase = 'indexing';
-    await index.sync();
+    // Public RPC may throttle a cold scan. Resume from the committed cursor;
+    // only retry read-only discovery and never retry an unsigned or signed action.
+    for(let delay=1500;;delay=Math.min(30000,delay*2)){
+      try{await index.sync();status.error=undefined;break;}
+      catch(error){
+        if(!/rate limit|too many requests|request exceeds defined limit|\b429\b/i.test(cleanMessage(error))&&error?.code!==-32005)throw error;
+        status.error='Arc RPC rate limited history reads; retrying';
+        await new Promise(resolve=>setTimeout(resolve,delay));
+      }
+    }
     const pending = new Map();
     const refresh = (watch = []) => {
       const normalized = [...new Set(watch.map(address => address.toLowerCase()))].sort(), key = normalized.join(',');
@@ -148,8 +160,9 @@ export function createDeploymentServer({deployment, client, indexPath, distDir, 
       prepare: async input => {const current = await refresh(); return prepareActor(deployment, current.block, input, client);}});
     if (status.phase !== 'failed') status.phase = 'ready';
   })();
-  let startupTimer;
-  const ready=Promise.race([startup,new Promise((_,reject)=>{startupTimer=setTimeout(()=>reject(Error('startup timeout')),startupTimeoutMs);})]).finally(()=>clearTimeout(startupTimer));
+  // Verification has its own finite deadline above. A progressing history scan may
+  // take longer than a single HTTP request; it must not terminate a verified lender service.
+  const ready=startup;
   ready.catch(error => {status.phase = 'failed'; status.error = cleanMessage(error);});
   const server = createServer(async (req, res) => {
     const abort = new AbortController();
@@ -168,11 +181,12 @@ export function createDeploymentServer({deployment, client, indexPath, distDir, 
       if (pathname === '/api' || pathname.startsWith('/api/')) {
         const route = pathname.slice(4) || '/';
         if (!API_ROUTES.has(`${req.method} ${route}`)) return fail(res, 404, 'route unavailable');
-        try {await ready;} catch {return fail(res,503,'deployment startup unavailable; refresh required',{'Retry-After':'5'});}
+        const basic=route==='/manifest'||route==='/prepare';
+        try {await (basic?verified:ready);} catch {return fail(res,503,'deployment startup unavailable; refresh required',{'Retry-After':'5'});}
         if (res.writableEnded || res.destroyed) return;
         if (req.method === 'POST' && !sameOriginPost(req)) return fail(res, 403, 'cross-origin request refused');
         req.url = route + url.search; // the keeper routes match on the unprefixed path
-        return api.emit('request', req, res);
+        return (basic?basicApi:api).emit('request', req, res);
       }
       if (pathname === '/rpc') {
         try {await ready;} catch {return fail(res,503,'deployment startup unavailable; refresh required',{'Retry-After':'5'});}

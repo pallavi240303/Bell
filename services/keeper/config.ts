@@ -58,17 +58,25 @@ export function validateDeployment(value:unknown):asserts value is Deployment {
 }
 export async function verifyDeployment(client:any,d:Deployment,source?:Header):Promise<Header>{
   validateDeployment(d);
-  const chain=await client.getChainId();if(!Number.isSafeInteger(chain)||BigInt(chain)!==rawUint(d.chainId))throw Error('deployment chain mismatch');
-  const block=await client.getBlock(source?{blockNumber:source.number}:{blockTag:'latest'});
+  const [chain,block]=await Promise.all([client.getChainId(),client.getBlock(source?{blockNumber:source.number}:{blockTag:'latest'})]);
+  if(!Number.isSafeInteger(chain)||BigInt(chain)!==rawUint(d.chainId))throw Error('deployment chain mismatch');
   if(!block?.hash||source&&block.hash!==source.hash)throw Error('deployment source block replaced');
   if(rawUint(d.deploymentBlock)>block.number)throw Error('deployment block is after source block');
-  for(const [name,address]of Object.entries(d.addresses)){
+  const checkCode=()=>Promise.all(Object.entries(d.addresses).map(async ([name,address])=>{
     const code=await client.getCode({address,blockNumber:block.number});if(!code||code==='0x')throw Error(`missing deployment code: ${name}`);
     if(keccak256(code)!==d.codeHashes[name]!.toLowerCase())throw Error(`deployment code mismatch: ${name}`);
-  }
-  const read=async(c:string,f:string)=>client.readContract({address:d.addresses[c],abi:artifact(contracts[c]!).abi,functionName:f,blockNumber:block.number});
-  for(const [c,f,target]of [['manager','loanManager','loanManager'],['loanManager','coverManager','manager'],['book','coverManager','manager'],['book','protectedPool','pool'],['pool','coverManager','loanManager'],['vault','coverManager','loanManager'],['oracle','receiver','receiver'],['receiver','oracle','oracle'],['manager','registry','registry'],['manager','oracle','oracle'],['manager','book','book'],['manager','pool','pool'],['manager','vault','vault'],['loanManager','registry','registry'],['loanManager','oracle','oracle'],['loanManager','pool','pool'],['loanManager','vault','vault'],['pool','cashToken','cash'],['book','cashToken','cash']])if(String(await read(c!,f!)).toLowerCase()!==d.addresses[target!]!.toLowerCase())throw Error(`deployment wiring mismatch: ${c}.${f}`);
-  const [profile,opens,cutoff]=await Promise.all([read('manager','profile'),read('manager','coverOpensBeforeClose'),read('manager','coverCutoffBeforeClose')]);
+  }));
+  const bindings=[['manager','loanManager','loanManager'],['loanManager','coverManager','manager'],['book','coverManager','manager'],['book','protectedPool','pool'],['pool','coverManager','loanManager'],['vault','coverManager','loanManager'],['oracle','receiver','receiver'],['receiver','oracle','oracle'],['manager','registry','registry'],['manager','oracle','oracle'],['manager','book','book'],['manager','pool','pool'],['manager','vault','vault'],['loanManager','registry','registry'],['loanManager','oracle','oracle'],['loanManager','pool','pool'],['loanManager','vault','vault'],['pool','cashToken','cash'],['book','cashToken','cash']] as const;
+  const checks=[...bindings.map(([c,f])=>[c,f] as const),...(['profile','coverOpensBeforeClose','coverCutoffBeforeClose'] as const).map(f=>['manager',f] as const)];
+  const calls=checks.map(([c,functionName])=>({address:d.addresses[c],abi:artifact(contracts[c]!).abi,functionName}));
+  // All getters are caller-independent. Deployless multicall is a read-only eth_call:
+  // it deploys nothing on Arc and sends no transaction. Never accept a partial response.
+  const [,results]=await Promise.all([checkCode(),d.chainId==='5042002'&&typeof client.multicall==='function'
+    ?client.multicall({contracts:calls,deployless:true,allowFailure:false,blockNumber:block.number})
+    :Promise.all(calls.map(call=>client.readContract({...call,blockNumber:block.number})))]);
+  if(results.length!==calls.length)throw Error('incomplete deployment verification');
+  bindings.forEach(([c,f,target],i)=>{if(String(results[i]).toLowerCase()!==d.addresses[target].toLowerCase())throw Error(`deployment wiring mismatch: ${c}.${f}`);});
+  const [profile,opens,cutoff]=results.slice(bindings.length);
   if(!(BigInt(profile)===0n&&BigInt(opens)===7200n&&BigInt(cutoff)===1800n||BigInt(profile)===1n&&BigInt(opens)===600n&&BigInt(cutoff)===60n))throw Error('deployment immutable profile mismatch');
   if((await client.getBlock({blockNumber:block.number})).hash!==block.hash)throw Error('deployment source block replaced during code reads');
   return {number:block.number,hash:block.hash,timestamp:block.timestamp};

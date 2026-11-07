@@ -105,3 +105,13 @@ test('exact permissionless settlement envelope delegates once and rejects actor 
  for(const method of ['settle','terminalSettle'])await assert.rejects(()=>prepareActor(checked,source,{chainId:checked.chainId,from:base.from,contract:'manager',method,args:['1']},rpc),/actor method/);
  await assert.rejects(()=>prepareActor(checked,source,base,{...rpc,getCode:async()=> '0x6001'}),/code mismatch/);
 });
+
+test('Arc prepare validates every binding and window in one pinned read and rejects a wrong result',async()=>{
+ const {verifyDeployment}=await module('config'),block={number:25n,hash:hash(25),timestamp:50n};
+ const d={...deployment,codeHashes:Object.fromEntries(Object.keys(deployment.addresses).map(k=>[k,keccak256('0x6000')]))};
+ let batches=0,wrong=false;
+ const rpc={getChainId:async()=>5042002,getBlock:async()=>block,getCode:async()=>'0x6000',readContract:()=>{throw Error('serial binding read');},
+ multicall:async(q:any)=>{batches++;assert.equal(q.blockNumber,25n);assert.equal(q.allowFailure,false);assert.equal(q.contracts.length,22);return q.contracts.map((x:any)=>wrong&&x.functionName==='cashToken'?address(98):wiring(x));}};
+ await verifyDeployment(rpc,d,block);assert.equal(batches,1);
+ wrong=true;await assert.rejects(verifyDeployment(rpc,d,block),/wiring/);
+});

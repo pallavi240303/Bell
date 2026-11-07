@@ -106,15 +106,40 @@ export async function snapshot(rpc:any,d:Deployment,watch:Hex[]=[],offerIds:Hex[
    const {fact,...referenceResult}=check;assets[id]={configs,state,corporateAction:await read('oracle','latestCorporateAction',[id]),latestReference,referenceCheck:referenceResult};if(state.activeSessionId!==zero)sessionIds.add(state.activeSessionId);
   }
   for(const id of sessionIds)sessions[id]={fact:await read('oracle','sessionFact',[id]),benchmark:await read('oracle','benchmarkOf',[id])};
-  const balances:Record<string,any>={};await Promise.all([...actors].sort().map(async actor=>{
-   const [cash,premiumCredit,cashCredit,poolShares,cashAllowanceLoanManager,cashAllowanceBook,borrowerNonce,cashAllowancePool,nativeGas]=await Promise.all([read('cash','balanceOf',[actor]),read('book','premiumCredit',[actor]),read('book','cashCredit',[actor]),read('pool','balanceOf',[actor]),read('cash','allowance',[actor,d.addresses.loanManager]),read('cash','allowance',[actor,d.addresses.book]),read('manager','borrowerNonce',[actor]),read('cash','allowance',[actor,d.addresses.pool]),rpc.getBalance({address:actor,blockNumber:block.number})]);
-   balances[actor]={cash,premiumCredit,cashCredit,poolShares,cashAllowanceLoanManager,cashAllowanceBook,borrowerNonce,cashAllowancePool,nativeGas};
-  }));
-  const stockTokens:Record<string,any>={};for(const token of [...tokenIds].sort()){
-   const [symbol,decimals,accountedBacking]=await Promise.all([tokenRead(token,'symbol'),tokenRead(token,'decimals'),read('vault','accountedBacking',[token])]);
-   const tokenBalances:Record<string,any>={};for(const actor of [...actors].sort()){const [balance,allowanceVault]=await Promise.all([tokenRead(token,'balanceOf',[actor]),tokenRead(token,'allowance',[actor,d.addresses.vault])]);tokenBalances[actor]={balance,allowanceVault};}
+  // Batch caller-independent getters at the snapshot block. Reverts invalidate the entire frame.
+  const accounts=[...actors].sort();
+  const readRows=async(build:(account:string)=>{address:string;abi:ReturnType<typeof artifact>['abi'];functionName:string;args:unknown[]}[])=>{
+   const rows=accounts.map(build),calls=rows.flat();
+   const values=d.chainId==='5042002'&&typeof rpc.multicall==='function'
+    ?await rpc.multicall({contracts:calls,blockNumber:block.number,deployless:true,allowFailure:false,batchSize:2048})
+    :await Promise.all(calls.map(call=>rpc.readContract({...call,blockNumber:block.number})));
+   if(values.length!==calls.length)throw Error('Incomplete wallet balances');
+   let offset=0;
+   return rows.map(row=>{const valuesForAccount=values.slice(offset,offset+row.length).map(integers);offset+=row.length;return valuesForAccount;});
+  };
+  const balances:Record<string,any>={};
+  const getter=(component:string,functionName:string,args:unknown[])=>({address:d.addresses[component]!,abi:artifact(contracts[component]!).abi,functionName,args});
+  const [cashRows,gasBalances]=await Promise.all([
+   readRows(actor=>[getter('cash','balanceOf',[actor]),getter('book','premiumCredit',[actor]),getter('book','cashCredit',[actor]),getter('pool','balanceOf',[actor]),getter('cash','allowance',[actor,d.addresses.loanManager]),getter('cash','allowance',[actor,d.addresses.book]),getter('manager','borrowerNonce',[actor]),getter('cash','allowance',[actor,d.addresses.pool])]),
+   Promise.all(accounts.map(address=>rpc.getBalance({address,blockNumber:block.number})))
+  ]);
+  accounts.forEach((actor,i)=>{
+   const [cash,premiumCredit,cashCredit,poolShares,cashAllowanceLoanManager,cashAllowanceBook,borrowerNonce,cashAllowancePool]=cashRows[i]!;
+   balances[actor]={cash,premiumCredit,cashCredit,poolShares,cashAllowanceLoanManager,cashAllowanceBook,borrowerNonce,cashAllowancePool,nativeGas:gasBalances[i]};
+  });
+  const stockTokens:Record<string,any>={};
+  for(const token of [...tokenIds].sort()){
+   const isMock=token===d.addresses.stock;
+   const tokenGetter=(functionName:string,args:unknown[])=>({address:token,abi:artifact('MockStockToken').abi,functionName,args});
+   const [symbol,decimals,accountedBacking,rows]=await Promise.all([tokenRead(token,'symbol'),tokenRead(token,'decimals'),read('vault','accountedBacking',[token]),readRows(actor=>[tokenGetter('balanceOf',[actor]),tokenGetter('allowance',[actor,d.addresses.vault]),...(isMock?[tokenGetter('restricted',[actor])]:[])])]);
+   const tokenBalances:Record<string,any>={};
+   accounts.forEach((actor,i)=>{
+    const [balance,allowanceVault,restricted]=rows[i]!;
+    tokenBalances[actor]=isMock?{balance,allowanceVault,restricted}:{balance,allowanceVault};
+    if(isMock)Object.assign(balances[actor],{stock:balance,stockAllowanceVault:allowanceVault,restricted});
+   });
    stockTokens[token]={symbol,decimals,accountedBacking,balances:tokenBalances};
-   if(token===d.addresses.stock){stockTokens[token].paused=await tokenRead(token,'paused');for(const actor of actors){tokenBalances[actor].restricted=await tokenRead(token,'restricted',[actor]);Object.assign(balances[actor],{stock:tokenBalances[actor].balance,stockAllowanceVault:tokenBalances[actor].allowanceVault,restricted:tokenBalances[actor].restricted});}}
+   if(isMock)stockTokens[token].paused=await tokenRead(token,'paused');
   }
   const [totalAssets,totalSupply,activeLoanIds,totalLockedCash,totalPremiumCredits,totalCashCredits,profile,coverOpensBeforeClose,coverCutoffBeforeClose,cashSymbol,cashDecimals]=await Promise.all([read('pool','totalAssets'),read('pool','totalSupply'),read('pool','activeReceiptIds'),read('book','totalLockedCash'),read('book','totalPremiumCredits'),read('book','totalCashCredits'),read('manager','profile'),read('manager','coverOpensBeforeClose'),read('manager','coverCutoffBeforeClose'),read('cash','symbol'),read('cash','decimals')]);
   const offerCoverage=projectCoverage(offers,receipts,totalLockedCash,completeOfferDiscovery);

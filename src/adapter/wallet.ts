@@ -2,6 +2,44 @@ import {encodeFunctionData,keccak256,type Abi,type AbiParameter,type Address,typ
 import {abis} from '../generated/abis.ts';
 import {uint} from './transport.ts';
 export interface Provider {request(args:{method:string;params?:unknown[]}):Promise<any>;on?(event:string,listener:(...args:any[])=>void):void;removeListener?(event:string,listener:(...args:any[])=>void):void}
+/** Public Arc Testnet settings, verified against docs.arc.io/arc/references/connect-to-arc. */
+const ARC_TESTNET={chainId:'0x4cef52',chainName:'Arc Testnet',nativeCurrency:{name:'USDC',symbol:'USDC',decimals:18},rpcUrls:['https://rpc.testnet.arc.io'],blockExplorerUrls:['https://explorer.testnet.arc.io']};
+function providerCode(error:unknown):number|undefined{
+  const seen=new Set<unknown>();let current:any=error;
+  for(let depth=0;current&&typeof current==='object'&&depth<8&&!seen.has(current);depth++){
+    seen.add(current);const code=Number(current.code);
+    if([4001,4902,-32002,4200,-32601].includes(code))return code;
+    current=current.data?.originalError??current.cause??current.error;
+  }
+}
+export function walletErrorMessage(error:unknown):string{
+  const code=providerCode(error);
+  if(code===4001)return 'Wallet request cancelled. Try again when you are ready to approve it.';
+  if(code===-32002)return 'A wallet request is already open. Open your selected wallet to finish or cancel it.';
+  const value=error as {shortMessage?:string;message?:string}|null;
+  const message=value?.shortMessage??value?.message??'Wallet request failed. Open your selected wallet and try again.';
+  if(/timed?\s*out|timeout|took too long/i.test(message))return 'The network request timed out. Wait a moment, then refresh. If you submitted a transaction, check its hash before retrying.';
+  return message.split('\n')[0]!.slice(0,300);
+}
+/** Only explicit user connection/switch actions call this; never during reads or signing. */
+export async function ensureWalletNetwork(provider:Provider,chain:string,current:()=>boolean=()=>true){
+  const chainId=`0x${uint(chain).toString(16)}`;
+  const check=()=>{if(!current())throw Error('Wallet changed while switching networks');};
+  const request=async(method:string,params?:unknown[])=>{check();const result=await provider.request({method,params});check();return result;};
+  if(BigInt(await request('eth_chainId'))===uint(chain))return;
+  try{await request('wallet_switchEthereumChain',[{chainId}]);}
+  catch(error){
+    check();
+    if(providerCode(error)!==4902){
+      if([4200,-32601].includes(providerCode(error)??0))throw Error(`Wallet chain mismatch · switch the wallet to chain ${chain} manually, then reconnect`);
+      throw error;
+    }
+    if(chain!=='5042002')throw Error(`Wallet chain mismatch · add chain ${chain} in your wallet, then reconnect`);
+    await request('wallet_addEthereumChain',[ARC_TESTNET]);
+    await request('wallet_switchEthereumChain',[{chainId}]);
+  }
+  if(BigInt(await request('eth_chainId'))!==uint(chain))throw Error(`Wallet chain mismatch · switch the wallet to chain ${chain}, then reconnect`);
+}
 export interface Manifest {chainId:string;deploymentBlock:string;addresses:Record<string,Address>;codeHashes:Record<string,Hex>}
 export type Intent={approval:string;amount:string}|{contract:string;method:string;args:unknown[]}|{settlement:'settle'|'terminalSettle';receiptId:string};
 export interface Unsigned {chainId:string;from:Address;to:Address;data:Hex;value:string;sourceBlock:string;sourceBlockHash:Hex}
@@ -42,11 +80,11 @@ export class Wallet{
   /** `actor` is the selected actor's public address: when set, no other account can connect or sign. */
   constructor(private provider:Provider,private rpc:any,readonly manifest:Manifest,private onChange=()=>{},readonly actor?:Address){provider.on?.('accountsChanged',this.accountsChanged);for(const event of ['chainChanged','disconnect'])provider.on?.(event,this.changed);}
   dispose(){this.provider.removeListener?.('accountsChanged',this.accountsChanged);for(const event of ['chainChanged','disconnect'])this.provider.removeListener?.(event,this.changed);this.changed();}
-  async connect(){
+  async connect(alreadyAuthorized=false){
     const generation=++this.generation;this.account=undefined;this.chainId=undefined;this.verified=false;
     const authorization:{generation:number;account?:string}={generation};this.authorization=authorization;
     try{
-      const accounts=await this.provider.request({method:'eth_requestAccounts'});
+      const accounts=await this.provider.request({method:alreadyAuthorized?'eth_accounts':'eth_requestAccounts'});
       if(this.authorization===authorization)this.authorization=undefined;
       if(generation!==this.generation)throw Error('Wallet changed while connecting');
       if(!Array.isArray(accounts)||typeof accounts[0]!=='string'||!/^0x[0-9a-fA-F]{40}$/.test(accounts[0]))throw Error('Connect a wallet account');
@@ -72,7 +110,8 @@ export class Wallet{
     const m=this.manifest;if(uint(m.chainId)===0n||BigInt(await this.rpc.getChainId())!==uint(m.chainId))throw Error('Manifest chain mismatch');
     const block=await this.rpc.getBlock(at===undefined?{blockTag:'latest'}:{blockNumber:at});if(!block?.hash||hash&&block.hash!==hash||block.number<uint(m.deploymentBlock))throw Error('Source block is not canonical');
     for(const name of Object.keys(abis))if(!m.addresses[name]||!m.codeHashes[name])throw Error('Incomplete manifest');
-    const seen=new Set<string>();for(const [name,address]of Object.entries(m.addresses)){if(!/^0x[0-9a-fA-F]{40}$/.test(address)||/^0x0{40}$/i.test(address)||seen.has(address.toLowerCase()))throw Error('Invalid manifest address');seen.add(address.toLowerCase());const code=await this.rpc.getCode({address,blockNumber:block.number});if(!code||code==='0x'||keccak256(code)!==m.codeHashes[name]?.toLowerCase())throw Error('Manifest code mismatch');}
+    const seen=new Set<string>();for(const [name,address]of Object.entries(m.addresses)){if(!/^0x[0-9a-fA-F]{40}$/.test(address)||/^0x0{40}$/i.test(address)||seen.has(address.toLowerCase()))throw Error('Invalid manifest address');seen.add(address.toLowerCase());}
+    await Promise.all(Object.entries(m.addresses).map(async ([name,address])=>{const code=await this.rpc.getCode({address,blockNumber:block.number});if(!code||code==='0x'||keccak256(code)!==m.codeHashes[name]?.toLowerCase())throw Error('Manifest code mismatch');}));
     if((await this.rpc.getBlock({blockNumber:block.number})).hash!==block.hash)throw Error('Source block is not canonical');return block;
   }
   expected(intent:Intent){

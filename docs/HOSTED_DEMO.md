@@ -12,6 +12,14 @@ Use the corrected manifest in `deployments/arc-optional-cover.json`. Contracts, 
 
 Frontend, backend and canonical read evidence were verified publicly. Real connected-wallet borrowing, offers, cover and settlement remain to be demonstrated by the actors. The first cold request can return 503 during index rebuild; wait for readiness before starting the timed cover window.
 
+## Wallet network setup
+
+Select MetaMask or Rabby, then choose **Connect wallet**. If the selected wallet is on another network, BELL requests Arc Testnet. If the wallet reports an unknown chain, BELL requests adding Arc Testnet with its public RPC, explorer and native USDC currency, then requests switching and checks the resulting chain ID. Approve these prompts inside that same wallet. Rejecting a prompt stops connection; BELL sends no transaction during network setup.
+
+Adding the network is different from importing an ERC-20 token. Native USDC is configured with the network; importing a stock token is not needed to connect, supply or withdraw. BELL never overwrites `window.ethereum`; it uses the selected EIP-6963 wallet provider. Extension injection warnings may still originate from other installed wallets.
+
+Hosted read verification allows the backend request window to complete rather than aborting after ten seconds. Contract code hashes and pinned block checks still apply. If a network request fails, refresh after readiness; check any already-submitted transaction hash before retrying a financial action.
+
 ## Hosting
 
 1. Connect Vercel in the existing BELL Arc Studio project. Authorize access in your own account.
@@ -62,3 +70,12 @@ The frontend and backend never sign for any actor. CRE simulation reports are la
 If Vercel runs the repository's `npm run build` as its platform build and then reports `forge: command not found`, it is using the standard npm build path. The intended container obtains Foundry from its first stage and compiles contracts inside Docker. Do not replace this with a frontend-only build; the same deployment must serve the keeper API and RPC proxy.
 
 Deploy a commit containing root `vercel.json` and `Dockerfile.vercel`. Confirm the selected repository/branch is `pallavi240303/Bell`, `main`, with Root Directory `./` and Framework `Container`. Clear custom dashboard Build/Install/Output overrides and deploy the updated source. If publishing uploaded files through Studio, sync both root files into that uploaded source first. Verify the deployment log uses Docker build stages before testing the public frontend and API; configuration validation alone is not deployment proof.
+
+
+## Local frontend and keeper, real Arc Testnet signatures
+
+From the repository root run `npm run build:frontend`, then `PORT=3000 node --import tsx scripts/serve-deployment.mjs`. Open http://localhost:3000 in the browser with your wallet. This serves the same frontend and backend as the hosted container; the manifest and RPC target remain Arc Testnet (5042002). No Anvil or actor keys are needed. The connected lender view verifies the deployment and reads the account and pool at one canonical block without waiting for the market history index. Approval and supply are separate wallet transactions; check the exact allowance, pool address and receipt.
+
+The local CRE operator is invoked per market event, not as a web server. Check `node --import tsx scripts/gpro-arc.ts status`. Only after supplying and preparing the next actors, use `originate` to start the timed replay, then the documented `cover`, `close` and `reopen` sequence. Those commands run the local CRE simulation with broadcast and verify report receipts on Arc. Never restart a pending broadcast blindly.
+
+For local Arc testing from the Vite frontend, run the local Arc backend above on port 3000, then start Vite with `BELL_API_ORIGIN=http://127.0.0.1:3000 npm run dev -- --host 127.0.0.1 --port 5173 --strictPort`. Unsigned preparation and reads then use the same local backend. In Guided demo → Buyer, choose **Use replay offer expiry (UTC)** to fill the current GoPro session’s proposed expiry, or enter a complete UTC date and time. The operator registers each buyer for the current session’s policy before the buyer approves USDC.

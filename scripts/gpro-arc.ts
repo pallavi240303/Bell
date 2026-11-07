@@ -114,7 +114,7 @@ export async function runArcGpro(command:string,address?:string){
  if(!state.configHash)throw Error('Run init first');
  if(command==='mint'||command==='eligible'){
   if(!address||!/^0x[0-9a-fA-F]{40}$/.test(address)||/^0x0{40}$/i.test(address))throw Error('Supply a public wallet address');const who=address.toLowerCase();
-  if(command==='mint'){await direct(`mint-${who}`,'stock','mint',[who,20n*10n**18n]);console.log('20 mock shares issued once. Fund testnet USDC separately via faucet.');}
+  if(command==='mint'){await direct(`mint-${who}`,'stock','mint',[who,(20n*10n**18n).toString()]);console.log('20 mock shares issued once. Fund testnet USDC separately via faucet.');}
   else{if(!state.session)throw Error('Run originate first');const policy=await read('manager','policyHash',[GOPRO_ASSET,state.session.id,state.configHash,1n,1n]);await direct(`eligible-${state.session.id}-${who}`,'eligibility','setEligible',[GOPRO_ASSET,who,policy,true]);}
   publicEvidence();return;
  }

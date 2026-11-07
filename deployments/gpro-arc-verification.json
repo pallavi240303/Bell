@@ -16,13 +16,13 @@
     "receiver": "0x757b15c0ce785fe26be159ba98ca443d1e6394c4"
   },
   "configHash": "0xc7fe5101a40ded8e2ecf8bec96b8a29d55012d3819548d34e5183a4366f7948b",
-  "stage": "reopen",
+  "stage": "origination",
   "session": {
-    "id": "0x2348dd6eab7749c9598b020925c42851a9533a768de7bcf83f1adf7f484d0af8",
-    "reference": "0x291ea332be04d9465abfe710186da1d743489bf79297832477e392f5a42171cd",
-    "open": 1794007408,
-    "close": 1794007518,
-    "reopen": 1794007520
+    "id": "0x08d1f7c745d4f269d315cd5678b1936966d149ef8c93affb72d89b429bf483cd",
+    "reference": "0x2348dd6eab7749c9598b020925c42851a9533a768de7bcf83f1adf7f484d0af8",
+    "open": 1794017231,
+    "close": 1794017831,
+    "reopen": 1794017833
   },
   "reports": [
     {
@@ -64,6 +64,22 @@
       "reportHash": "0x7fa4c80295c6e1ca2d9875df69c2f3dd0a30d3e6ce532ace88e086464840cc7a",
       "price": "1565000",
       "sessionId": "0x2348dd6eab7749c9598b020925c42851a9533a768de7bcf83f1adf7f484d0af8"
+    },
+    {
+      "stage": "schedule",
+      "authority": "Native CRE supplied replay calendar",
+      "transactionHash": "0xa32e95d29a654d6ada15cb12cadaef57974d45c4067e455a4b8d9b303118c4ae",
+      "reportHash": "0x97cc2a0610e5ee8a0be7e78492bb55f581cad4c3675d4ec378e02a4002bfd830",
+      "price": "0",
+      "sessionId": "0x08d1f7c745d4f269d315cd5678b1936966d149ef8c93affb72d89b429bf483cd"
+    },
+    {
+      "stage": "origination",
+      "authority": "Native CRE historical HTTP replay",
+      "transactionHash": "0xf95e5de029e190e5c1e8264bf3c64c4bb0939d1471171e477ff3c623c4b6211e",
+      "reportHash": "0xa8cd5167bae91d628647a65b91cc92252d65a786239155e9d8be4c74de465433",
+      "price": "1969900",
+      "sessionId": "0x08d1f7c745d4f269d315cd5678b1936966d149ef8c93affb72d89b429bf483cd"
     }
   ],
   "setupTransactions": [
@@ -90,6 +106,11 @@
     {
       "label": "bootstrap-3-dual-source",
       "hash": "0x10e85cf97143a2fbec12589f0fa28020037b4b3f3b4ea08b84aaf3e0770bbc66",
+      "transactionSucceeded": true
+    },
+    {
+      "label": "mint-0x6da05b79d241f08a1556f7ded69ef3e74b520eca",
+      "hash": "0x7beb996a38b7f44bf677035868e6a0a6f80a284d3c24ac5380b6143f55b18b2f",
       "transactionSucceeded": true
     }
   ],

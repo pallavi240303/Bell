@@ -5,7 +5,7 @@ import {verifyDeployment} from './config.ts';
 const allowed:Record<string,string[]>={pool:['deposit','redeem'],book:['postOffer','cancelOffer','withdrawPremium','withdrawCashCredit'],loanManager:['borrow','repay','addCollateral','withdrawCollateral','liquidate','topUpBacking','finalizeHandoff'],manager:['buyCover'],vault:['withdrawClaim']};
 const approvals:Record<string,[string,string]>={deposit:['cash','pool'],offer:['cash','book'],premium:['cash','book'],repay:['cash','loanManager'],collateral:['stock','vault'],backing:['stock','vault']};
 export interface Unsigned {chainId:string;from:Address;to:Address;data:Hex;value:'0';sourceBlock:string;sourceBlockHash:Hex}
-export async function prepareActor(d:Deployment,source:Header,input:Record<string,any>,client:any):Promise<Unsigned> {
+export async function prepareActor(d:Deployment,source:Header|undefined,input:Record<string,any>,client:any):Promise<Unsigned> {
   if(Object.hasOwn(input,'settlement')){
     exactKeys(input,['chainId','from','settlement','receiptId']);
     if(input.chainId!==d.chainId)throw Error('deployment chain mismatch');rawUint(input.chainId);
@@ -13,7 +13,7 @@ export async function prepareActor(d:Deployment,source:Header,input:Record<strin
     if(input.settlement!=='settle'&&input.settlement!=='terminalSettle')throw Error('permissionless method not allowed');
     return prepareSettlement(d,source,input.from.toLowerCase() as Address,rawUint(input.receiptId),input.settlement,client);
   }
-  await verifyDeployment(client,d,source);
+  source=await verifyDeployment(client,d,source);
   const approval=input.approval!==undefined;
   exactKeys(input,approval?['chainId','from','approval','amount']:['chainId','from','contract','method','args']);
   if(input.chainId!==d.chainId)throw Error('deployment chain mismatch');rawUint(input.chainId);
@@ -25,8 +25,8 @@ export async function prepareActor(d:Deployment,source:Header,input:Record<strin
   return {chainId:d.chainId,from:input.from.toLowerCase() as Address,to,data:encodeFunctionData({abi:artifact(name).abi,functionName:method,args:argsFor(name,method,args)}),value:'0',sourceBlock:source.number.toString(),sourceBlockHash:source.hash};
 }
 /** Separate permissionless lane; never accepts actor amounts, claim withdrawals or backing. */
-export async function prepareSettlement(d:Deployment,source:Header,from:Address,id:bigint,method:'settle'|'terminalSettle',client:any):Promise<Unsigned> {
-  await verifyDeployment(client,d,source);
+export async function prepareSettlement(d:Deployment,source:Header|undefined,from:Address,id:bigint,method:'settle'|'terminalSettle',client:any):Promise<Unsigned> {
+  source=await verifyDeployment(client,d,source);
   if(method!=='settle'&&method!=='terminalSettle')throw Error('permissionless method not allowed');
   return {chainId:d.chainId,from,to:d.addresses.manager!,data:encodeFunctionData({abi:artifact('CoverManager').abi,functionName:method,args:[id]}),value:'0',sourceBlock:source.number.toString(),sourceBlockHash:source.hash};
 }

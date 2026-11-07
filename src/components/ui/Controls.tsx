@@ -33,8 +33,8 @@ export function ExplorerLink({hash,children='View transaction'}:{hash:string;chi
 export function TransactionToast(){
  const v=useBell();
  useEffect(()=>{if((v.workflow.walletPanelOpen&&!v.wallet.connected&&!v.pending&&!v.actionHash)||!v.actionStatus||v.actionStatus==='Newer refresh superseded this snapshot'){toast.dismiss('bell-status');return;}const message=v.actionStatus==='CONFIRMED · canonical snapshot refreshed'?'Transaction confirmed':v.actionStatus;const options={id:'bell-status',duration:v.pending||v.noticeTone==='error'?Infinity:7000,description:v.actionHash?<ExplorerLink hash={v.actionHash}/>:undefined};
- if(v.pending)toast.loading(message,options);else if(v.noticeTone==='error')toast.error(message,options);else if(v.noticeTone==='success')toast.success(message,options);else toast.info(message,options);
- },[v.actionStatus,v.actionHash,v.pending,v.noticeTone,v.workflow.walletPanelOpen,v.wallet.connected]);
+ if(v.pending&&v.transactionPhase!=='confirmed')toast.loading(message,options);else if(v.noticeTone==='error')toast.error(message,options);else if(v.noticeTone==='success')toast.success(message,options);else toast.info(message,options);
+ },[v.actionStatus,v.actionHash,v.pending,v.transactionPhase,v.noticeTone,v.workflow.walletPanelOpen,v.wallet.connected]);
  return <Toaster className="bell-toaster" theme="light" position="top-right" offset={{top:84,right:24}} mobileOffset={{top:82,right:16,left:16}} closeButton toastOptions={{className:'bell-toast',style:{fontFamily:'inherit',fontSize:12}}}/>;
 }
 export function WalletDialog(){

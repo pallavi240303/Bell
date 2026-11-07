@@ -93,3 +93,11 @@ test('disposing a provider while preparing or connecting invalidates its pending
  x.provider.request=async({method}:any)=>method==='eth_requestAccounts'?new Promise(r=>finish=r):method==='eth_accounts'?[account]:'0x7a69';
  const pending=x.client.connect();x.client.dispose();finish([account]);await assert.rejects(()=>pending,/changed/i);assert.equal(x.client.verified,false);assert.equal(x.client.account,undefined);
 });
+
+test('reload can verify an already authorized account without opening wallet permissions',async()=>{
+ const x=await setup();x.calls.length=0;
+ await x.client.connect(true);
+ assert.equal(x.client.verified,true);
+ assert.equal(x.calls.some(c=>c.method==='eth_requestAccounts'),false);
+ x.setAccounts([]);await assert.rejects(()=>x.client.connect(true));assert.equal(x.client.verified,false);
+});

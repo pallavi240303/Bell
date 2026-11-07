@@ -12,3 +12,14 @@ export function utcSeconds(value:string):string{
  const ms=Date.parse(normalized+'Z');if(!Number.isFinite(ms)||ms<0||new Date(ms).toISOString().slice(0,19)!==normalized)throw Error('Invalid UTC expiry.');return String(ms/1000);
 }
 export function timestamp(value:bigint|undefined){const result=utcInput(value);return result?result.replace('T',' ')+' UTC':'Unavailable';}
+
+// Tab-scoped public preferences. A browser with storage disabled can still connect normally.
+export function tabValue(key:string):string {
+ try{return window.sessionStorage.getItem('bell.'+key)??'';}catch{return '';}
+}
+export function rememberTab(key:string,value:string){
+ try{if(value)window.sessionStorage.setItem('bell.'+key,value);else window.sessionStorage.removeItem('bell.'+key);}catch{/* Storage is optional. */}
+}
+export function tabChoice<T extends string>(key:string,allowed:readonly T[],fallback:T):T {
+ const value=tabValue(key) as T;return allowed.includes(value)?value:fallback;
+}

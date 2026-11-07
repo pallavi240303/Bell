@@ -60,3 +60,16 @@ test('buyer explicitly chooses the maximum existing-loan LTV for both post and e
  assert.equal((c as any).offerTerms().maxBorrowerLtvBps,'7500');
  for(const invalid of ['','0','100.01','75.001','-1']){c.set('fMaxLtv',invalid);assert.throws(()=>(c as any).offerTerms());}
 });
+
+test('incomplete offer expiry names the missing input',()=>{
+ const {c}=setup();c.set('fShares','7');c.set('fPct','8');c.set('fFee','1');
+ assert.match(c.renderVals().workflow.postReason,/expiry.*UTC|UTC.*expiry/i);
+});
+test('buyer eligibility for the actual session policy is checked before USDC approval',async()=>{
+ const {c,account,frame}=setup();c.manifest!.addresses.eligibility=addr('e') as any;
+ let eligible=false,calls=0;c.rpc={readContract:async(q:any)=>{calls++;assert.equal(q.functionName,'isEligible');assert.equal(q.args[1],account);assert.equal(q.blockNumber,frame.block.number);return eligible;},getBlock:async()=>frame.block};
+ c.set('fShares','7');c.set('fPct','8');c.set('fFee','1');c.set('offerExpiry','110000');
+ await new Promise(r=>setTimeout(r,0));assert.match(c.renderVals().postReason,/register.*buyer|buyer.*registered/i);assert.equal(c.renderVals().workflow.canApproveOffer,false);assert.equal(calls,1);
+ eligible=true;frame.block={...frame.block,number:frame.block.number+1n,hash:'0x'+'4'.repeat(64)};c.prefill();
+ await new Promise(r=>setTimeout(r,0));assert.match(c.renderVals().postReason,/Approve the offer cash/);assert.equal(c.renderVals().workflow.canApproveOffer,true);
+});

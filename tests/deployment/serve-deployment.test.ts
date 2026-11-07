@@ -169,13 +169,24 @@ test('a cold-start API call waits for verification instead of permanently failin
   await s.close();
 });
 test('startup verification has a finite deadline and leaves read endpoints honestly unavailable',{timeout:2000},async()=>{
-  const app=createDeploymentServer({deployment,client:{getChainId:()=>new Promise(()=>{})},indexPath:join(mkdtempSync(join(tmpdir(),'bell-timeout-')),'index.json'),distDir:dist(),startupTimeoutMs:25});
+  const app=createDeploymentServer({deployment,client:{getChainId:()=>new Promise(()=>{}),getBlock:()=>new Promise(()=>{})},indexPath:join(mkdtempSync(join(tmpdir(),'bell-timeout-')),'index.json'),distDir:dist(),startupTimeoutMs:25});
   await new Promise<void>(r=>app.server.listen(0,'127.0.0.1',r));open.push(app.server);
   const base=`http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
   const response=await raw(base,'/api/manifest');assert.equal(response.status,503);
   await assert.rejects(app.ready,/startup timeout/);
   assert.equal((await raw(base,'/healthz')).status,503);
   app.server.closeAllConnections();await new Promise<void>(r=>app.server.close(()=>r()));
+});
+
+test('a rate-limited history scan retries while verified lenders can prepare before the index is ready',async()=>{
+  let reads=0,unblock!:()=>void,started!:()=>void;
+  const gate=new Promise<void>(r=>unblock=r),failed=new Promise<void>(r=>started=r);
+  const client={...node.client,getLogs:async(params:any)=>{if(++reads===1){started();throw Object.assign(Error('Request exceeds defined limit.'),{code:-32005});}await gate;return node.client.getLogs(params);}};
+  const app=createDeploymentServer({deployment,client,indexPath:join(mkdtempSync(join(tmpdir(),'bell-retry-')),'index.json'),distDir:dist()});
+  await new Promise<void>(r=>app.server.listen(0,'127.0.0.1',r));open.push(app.server);
+  const base=`http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
+  try{await failed;const approval=await raw(base,'/api/prepare','POST',{},JSON.stringify({chainId:deployment.chainId,from:node.actors[1],approval:'deposit',amount:'10000000'}));assert.equal(approval.status,200);assert.equal((await raw(base,'/healthz')).status,503);unblock();await app.ready;assert.ok(reads>=2);}
+  finally{unblock();app.server.closeAllConnections();await new Promise<void>(r=>app.server.close(()=>r()));}
 });
 
 // Uses the real keeper against an owned local chain with the public chain ID; no public RPC is contacted.

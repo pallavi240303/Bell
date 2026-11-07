@@ -1,6 +1,6 @@
-import {createPublicClient,custom,http,type Address} from 'viem';
+import {createPublicClient,custom,http,parseAbi,type Address} from 'viem';
 import {Transport,type Frame,json,uint} from '../adapter/transport.ts';
-import {Wallet,WalletAccountMismatchError,type Intent,type Manifest} from '../adapter/wallet.ts';
+import {Wallet,WalletAccountMismatchError,ensureWalletNetwork,walletErrorMessage,type Intent,type Manifest} from '../adapter/wallet.ts';
 import {FALLBACK_ID,ProviderDiscovery,fallbackProvider} from '../adapter/providers.ts';
 import {amount,receiptLabel,loanLabel,truthLabels} from './truth.ts';
 import {borrowIntent,coverIntent,borrowRequest,offerTemplate,offerTarget,coverPreview,position,editOffer,hashBundle,offerTerms,marketContext} from '../adapter/actions.ts';
@@ -8,18 +8,27 @@ import {debtLimit,loanPrice,projectedDebt} from '../../engine/receipt.ts';
 import {abis} from '../generated/abis.ts';
 import {mulDivDown} from '../../engine/math.ts';
 import {cashOwed} from '../../engine/settle.ts';
-import {exactUnits,utcInput,utcSeconds,timestamp} from './workflow.ts';
+import {exactUnits,utcInput,utcSeconds,timestamp,rememberTab,tabValue,tabChoice} from './workflow.ts';
 import {claimPayment,repaidFromCover} from './evidence.ts';
 const muted='#74717f',ink='#252331',safe='#168060';
+const eligibilityAbi=parseAbi(['function isEligible(bytes32 assetId,address account,bytes32 policyHash) view returns (bool)']);
 const pages=['HOME','REPLAY','BORROW','BUYERS','LEND','CONTROL'];
 const faq=[['DOES BELL REMOVE MARKET RISK?',"No. Borrowers still carry the stock’s price drop. Reserved buyer cash backs the covered loan."],['IS THE WHOLE LOAN REPAID AT SETTLEMENT?','Normal settlement ends session cover. Residual debt continues accruing; terminal settlement closes debt, with delivery tracked separately.'],["WHAT IF THE STOCK OPENS BELOW THE BUYERS’ PRICES?",'Reserved buyers remain bound to their immutable terms. A premium does not guarantee profit.'],['IS EVERY LOAN COVERED?','No. The pool holds ordinary and session-covered loans. Lenders bear ordinary credit risk; cover backs only its selected loan and session.']];
 export class Controller{
   frame:Frame|undefined;manifest:Manifest|undefined;wallet:Wallet|undefined;rpc:any;transport=new Transport();discovery:ProviderDiscovery|undefined;expectedAccount='';providerId='';
+  lenderMode=false;
+  private lender?:{block:bigint;hash:string;cash:bigint;cashAllowancePool:bigint;poolShares:bigint;liquid:bigint;assets:bigint};
+  setLenderMode(active:boolean){
+    if(this.lenderMode===active)return;
+    this.lenderMode=active;
+    if(this.manifest?.chainId==='5042002'&&this.wallet?.verified)void this.run(()=>this.refresh());
+  }
+  private buyerCheck?:{key:string;reason:string};
   private withdrawalQuote:{key:string;assets?:bigint;error?:string}|undefined;
   private withdrawalTimer:ReturnType<typeof setTimeout>|undefined;
   connectionIssue:{actualAddress:string;expectedAddress:string}|undefined;
   borrowAmount='';collateralAmount='';offerExpiry='';selectedAssetId='';walletPanelOpen=false;loading=false;private borrowSource='';
-  selectedLoanId='';selectedReceiptId='';offerLoanId='';offerBasisExplicit=false;termsManual=false;loanMethod='borrow';loanArgs='';quoteManual=false;quoteLocked=false;quoteSource='';page='HOME';menu=false;showLog=false;wide=true;hover='';faqOpen=-1;version=0;listeners=new Set<()=>void>();
+  selectedLoanId='';selectedReceiptId='';offerLoanId='';offerBasisExplicit=false;termsManual=false;loanMethod='borrow';loanArgs='';quoteManual=false;quoteLocked=false;quoteSource='';page=tabChoice('page',pages,'HOME');menu=false;showLog=false;wide=true;hover='';faqOpen=-1;version=0;listeners=new Set<()=>void>();
   status='';hash='';pending=false;transactionPhase='';noticeTone='info';transactions:{hash:string;label:string;phase:string}[]=[];supIn='';wdIn='';fShares='';fPct='';fFee='';fMaxLtv:string|undefined=undefined;priceIn='';termsText='';quoteText='';selected:string[]=[];events:any[]=[];eventIndex=0;
   wipeState:'off'|'in'|'out'='off';loadOp=0;pageOpacity=1;readPct='0%';private request=0;private session=0;private timers:ReturnType<typeof setTimeout>[]=[];
   subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};getVersion=()=>this.version;
@@ -27,41 +36,73 @@ export class Controller{
   private resize=()=>{this.wide=window.innerWidth>=1240;this.emit();};
   private scroll=()=>{this.readPct=`${Math.min(100,window.scrollY/Math.max(1,document.documentElement.scrollHeight-window.innerHeight)*100)}%`;this.emit();};
   private key=(event:KeyboardEvent)=>{if(event.key==='Escape'){this.menu=false;this.emit();}};
-  start(){this.discovery=new ProviderDiscovery(window,()=>{if(this.providerId===FALLBACK_ID)this.chooseProvider('');else this.emit();});this.discovery.start();this.resize();window.addEventListener('resize',this.resize);window.addEventListener('scroll',this.scroll,{passive:true});window.addEventListener('keydown',this.key);void this.run(async()=>{this.manifest=await this.transport.manifest();this.rpc=this.httpRpc();await this.refresh();});}
-  private httpRpc(){return createPublicClient({transport:http((import.meta as unknown as {env?:{VITE_RPC_URL?:string}}).env?.VITE_RPC_URL||'/rpc')});}
-  stop(){clearTimeout(this.withdrawalTimer);this.discovery?.stop();this.discovery=undefined;this.request++;this.timers.forEach(clearTimeout);window.removeEventListener('resize',this.resize);window.removeEventListener('scroll',this.scroll);window.removeEventListener('keydown',this.key);this.wallet?.dispose();}
-  go=(page:string)=>{this.menu=false;this.timers.forEach(clearTimeout);this.timers=[];if(page===this.page){this.emit();return;}if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){this.page=page;this.wipeState='off';this.loadOp=0;this.pageOpacity=1;window.scrollTo(0,0);this.emit();return;}this.wipeState='in';this.loadOp=1;this.pageOpacity=1;this.emit();this.timers.push(setTimeout(()=>{this.page=page;window.scrollTo(0,0);this.wipeState='out';this.loadOp=0;this.emit();this.timers.push(setTimeout(()=>{this.wipeState='off';this.emit();},480));},760));};
-  async run(work:()=>Promise<unknown>){if(!this.pending)this.transactionPhase='';try{await work();}catch(error){if(!this.frame)this.loading=false;const message=error instanceof Error?error.message:'Request failed';this.noticeTone=this.transactionPhase==='confirmed'?'info':'error';this.status=this.transactionPhase==='confirmed'?`Transaction confirmed. Balances could not refresh. Refresh the state before continuing.`:message;this.emit();}}
-  async switchNetwork(){if(!this.manifest)throw Error('Load the deployment before switching networks.');await this.chosenProvider().provider.request({method:'wallet_switchEthereumChain',params:[{chainId:`0x${BigInt(this.manifest.chainId).toString(16)}`}]});await this.connect();}
+  private startupReady=false;
+  private resumeWallet():boolean{
+    if(!this.startupReady||this.wallet||this.providerId||!this.manifest)return false;
+    let saved;try{saved=JSON.parse(tabValue('wallet'));}catch{return false;}
+    if(!saved||!/^0x[0-9a-f]{40}$/.test(saved.account)||saved.chain!==this.manifest.chainId||saved.pool!==this.manifest.addresses?.pool)return false;
+    const found=this.discovery?.list()??[];
+    const matches=found.filter(p=>saved.rdns?p.rdns===saved.rdns:p.id===saved.id);
+    const chosen=matches.length===1?matches[0]:!found.length&&saved.id===FALLBACK_ID?fallbackProvider(window):undefined;
+    if(!chosen)return false;
+    this.providerId=chosen.id;
+    void this.run(()=>this.connect(saved.account));
+    return true;
+  }
+  start(){
+    this.page=tabChoice('page',pages,'HOME');this.startupReady=false;
+    this.discovery=new ProviderDiscovery(window,()=>{
+      if(this.providerId===FALLBACK_ID)this.chooseProvider('');
+      else if(!this.resumeWallet())this.emit();
+    });
+    this.discovery.start();this.resize();window.addEventListener('resize',this.resize);window.addEventListener('scroll',this.scroll,{passive:true});window.addEventListener('keydown',this.key);
+    const session=this.session;
+    void this.run(async()=>{
+      const manifest=await this.transport.manifest();if(session!==this.session)return;
+      this.manifest=manifest;this.rpc=this.httpRpc();this.startupReady=true;
+      if(!this.resumeWallet())try{await this.refresh();}catch(error){if(session===this.session)throw error;}
+    });
+  }
+  private httpRpc(){return createPublicClient({transport:http((import.meta as unknown as {env?:{VITE_RPC_URL?:string}}).env?.VITE_RPC_URL||'/rpc',{timeout:250_000,retryCount:0})});}
+  stop(){this.startupReady=false;this.session++;clearTimeout(this.withdrawalTimer);this.discovery?.stop();this.discovery=undefined;this.request++;this.timers.forEach(clearTimeout);window.removeEventListener('resize',this.resize);window.removeEventListener('scroll',this.scroll);window.removeEventListener('keydown',this.key);const wallet=this.wallet;this.wallet=undefined;wallet?.dispose();this.providerId='';}
+  go=(page:string)=>{if(!pages.includes(page))return;rememberTab('page',page);this.menu=false;this.timers.forEach(clearTimeout);this.timers=[];if(page===this.page){this.emit();return;}if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){this.page=page;this.wipeState='off';this.loadOp=0;this.pageOpacity=1;window.scrollTo(0,0);this.emit();return;}this.wipeState='in';this.loadOp=1;this.pageOpacity=1;this.emit();this.timers.push(setTimeout(()=>{this.page=page;window.scrollTo(0,0);this.wipeState='out';this.loadOp=0;this.emit();this.timers.push(setTimeout(()=>{this.wipeState='off';this.emit();},480));},760));};
+  async run(work:()=>Promise<unknown>){if(!this.pending)this.transactionPhase='';try{await work();}catch(error){if(!this.frame)this.loading=false;const message=walletErrorMessage(error);this.noticeTone=this.transactionPhase==='confirmed'?'info':'error';this.status=this.transactionPhase==='confirmed'?`Transaction confirmed. Balances could not refresh. Refresh the state before continuing.`:message;this.emit();}}
+  async switchNetwork(){if(!this.manifest)throw Error('Load the deployment before switching networks.');await this.connect();}
   dismissNotice(){this.status='';this.emit();}
-  disconnect(){const wallet=this.wallet;this.wallet=undefined;wallet?.dispose();this.reset();this.rpc=this.httpRpc();this.noticeTone='info';this.status='Wallet disconnected';void this.run(()=>this.refresh());}
+  disconnect(){rememberTab('wallet','');const wallet=this.wallet;this.wallet=undefined;wallet?.dispose();this.reset();this.rpc=this.httpRpc();this.noticeTone='info';this.status='Wallet disconnected';void this.run(()=>this.refresh());}
   /** Clears every wallet-bound input after a provider, actor, account or chain change. Nothing is carried over. */
-  private reset=()=>{clearTimeout(this.withdrawalTimer);this.withdrawalQuote=undefined;this.transactions=[];this.connectionIssue=undefined;this.session++;this.borrowAmount='';this.collateralAmount='';this.offerExpiry='';this.borrowSource='';this.selectedAssetId='';this.frame=undefined;this.supIn='';this.wdIn='';this.fShares='';this.fPct='';this.fFee='';this.fMaxLtv=undefined;this.selected=[];this.selectedReceiptId='';this.selectedLoanId='';this.quoteText='';this.quoteSource='';this.quoteLocked=false;this.quoteManual=false;this.loanArgs='';this.termsText='';this.offerLoanId='';this.offerBasisExplicit=false;this.termsManual=false;this.events=[];this.hash='';this.request++;this.status='Wallet changed · reconnect required';this.emit();};
+  private reset=()=>{clearTimeout(this.withdrawalTimer);this.withdrawalQuote=undefined;this.buyerCheck=undefined;this.transactions=[];this.connectionIssue=undefined;this.session++;this.borrowAmount='';this.collateralAmount='';this.offerExpiry='';this.borrowSource='';this.selectedAssetId='';this.frame=undefined;this.lender=undefined;this.supIn='';this.wdIn='';this.fShares='';this.fPct='';this.fFee='';this.fMaxLtv=undefined;this.selected=[];this.selectedReceiptId='';this.selectedLoanId='';this.quoteText='';this.quoteSource='';this.quoteLocked=false;this.quoteManual=false;this.loanArgs='';this.termsText='';this.offerLoanId='';this.offerBasisExplicit=false;this.termsManual=false;this.events=[];this.hash='';this.request++;this.status='Wallet changed · reconnect required';this.emit();};
   private chosenProvider(){
     const found=this.discovery?.list()??[];
     if(this.providerId){const chosen=this.discovery?.get(this.providerId)??(!found.length&&this.providerId===FALLBACK_ID&&typeof window!=='undefined'?fallbackProvider(window):undefined);if(!chosen)throw Error('Selected wallet is no longer available · choose again');return chosen;}
     if(!found.length){const single=typeof window==='undefined'?undefined:fallbackProvider(window);if(single)return single;throw Error('Install or open a connected wallet');}
     throw Error('Choose your wallet (MetaMask or Rabby) in the wallet dialog before connecting');
   }
-  chooseProvider(id:string){if(id===this.providerId)return;this.providerId=id;const wallet=this.wallet;this.wallet=undefined;wallet?.dispose();this.reset();}
-  chooseAccount(address:string){const key=address.toLowerCase();if(key&& !/^0x[0-9a-f]{40}$/.test(key))throw Error('Invalid wallet address');if(key===this.expectedAccount)return;this.expectedAccount=key;const wallet=this.wallet;this.wallet=undefined;wallet?.dispose();this.reset();}
-  async connect(){
+  chooseProvider(id:string){if(id===this.providerId)return;rememberTab('wallet','');this.providerId=id;const wallet=this.wallet;this.wallet=undefined;wallet?.dispose();this.reset();}
+  chooseAccount(address:string){const key=address.toLowerCase();if(key&& !/^0x[0-9a-f]{40}$/.test(key))throw Error('Invalid wallet address');if(key===this.expectedAccount)return;rememberTab('wallet','');this.expectedAccount=key;const wallet=this.wallet;this.wallet=undefined;wallet?.dispose();this.reset();}
+  async connect(resumeAccount?:string){
     const chosen=this.chosenProvider(),startingSession=this.session;
     if(!this.manifest)this.manifest=await this.transport.manifest();
     if(startingSession!==this.session)throw Error('Wallet changed while connecting');
     const previous=this.wallet;this.wallet=undefined;previous?.dispose();this.reset();
-    const session=this.session;this.providerId=chosen.id;this.rpc=createPublicClient({transport:custom(chosen.provider)});
-    const wallet=new Wallet(chosen.provider,this.rpc,this.manifest!,()=>{if(this.wallet===wallet)this.reset();},(this.expectedAccount||undefined) as Address|undefined);this.wallet=wallet;
+    const session=this.session;this.providerId=chosen.id;
+    if(!resumeAccount)await ensureWalletNetwork(chosen.provider,this.manifest!.chainId,()=>session===this.session&&this.providerId===chosen.id);
+    this.rpc=createPublicClient({transport:custom(chosen.provider)});
+    const wallet=new Wallet(chosen.provider,this.rpc,this.manifest!,()=>{if(this.wallet===wallet){rememberTab('wallet','');this.reset();}},(resumeAccount||this.expectedAccount||undefined) as Address|undefined);this.wallet=wallet;
     try{
-      await wallet.connect();
+      await wallet.connect(!!resumeAccount);
       if(this.wallet!==wallet||session!==this.session)throw Error('Wallet changed while connecting');
-      this.status='';this.noticeTone='info';
-      await this.refresh();
+      rememberTab('wallet',JSON.stringify({id:chosen.id,rdns:chosen.rdns,account:wallet.account,chain:wallet.manifest.chainId,pool:wallet.manifest.addresses.pool}));
+      this.status='';this.noticeTone='info';this.walletPanelOpen=false;this.emit();
+      try{await this.refresh();}catch(error){
+        if(this.wallet!==wallet||session!==this.session)throw error;
+        this.loading=false;this.status='Wallet connected. Balance refresh failed. Use Refresh to retry.';this.noticeTone='error';this.emit();return;
+      }
       if(this.wallet!==wallet||session!==this.session)throw Error('Wallet changed while connecting');
       this.walletPanelOpen=false;this.noticeTone='success';this.status='Wallet connected';this.emit();
     }catch(error){
       const current=this.wallet===wallet;
-      if(current){this.wallet=undefined;wallet.dispose();this.reset();this.rpc=this.httpRpc();void this.refresh().catch(()=>{});}
+      if(current){if(resumeAccount)rememberTab('wallet','');this.wallet=undefined;wallet.dispose();this.reset();this.rpc=this.httpRpc();void this.refresh().catch(()=>{});}
       else wallet.dispose();
       if(current&&error instanceof WalletAccountMismatchError)this.connectionIssue={actualAddress:error.actualAddress,expectedAddress:error.expectedAddress};
       throw error;
@@ -69,8 +110,24 @@ export class Controller{
   }
   async refresh(minimum=0n){
     const request=++this.request,account=this.wallet?.account;this.loading=true;
-    this.frame=undefined;this.events=[];this.eventIndex=0;this.emit();
+    this.lender=undefined;this.frame=undefined;this.events=[];this.eventIndex=0;this.emit();
+    if(this.lenderMode&&account&&this.wallet?.verified&&this.manifest?.chainId==='5042002'){
+      const wallet=this.wallet,rpc=this.rpc,{pool,cash}=this.manifest.addresses;
+      try{
+        const block=await wallet.verify();
+        if(block.number<minimum)throw Error('Snapshot has not reached receipt block; refresh required');
+        const read=(address:Address,abi:typeof abis.pool|typeof abis.cash,functionName:string,args:unknown[])=>rpc.readContract({address,abi,functionName,args,blockNumber:block.number}) as Promise<bigint>;
+        const [balance,allowance,poolShares,liquid,assets]=await Promise.all([
+          read(cash!,abis.cash,'balanceOf',[account]),read(cash!,abis.cash,'allowance',[account,pool]),read(pool!,abis.pool,'balanceOf',[account]),
+          read(cash!,abis.cash,'balanceOf',[pool]),read(pool!,abis.pool,'totalAssets',[])]);
+        if((await rpc.getBlock({blockNumber:block.number})).hash!==block.hash)throw Error('Lender balance block replaced; refresh required');
+        if(request!==this.request||wallet!==this.wallet||account!==wallet.account||!wallet.verified||!this.lenderMode)throw Error('Wallet or lender view changed');
+        this.lender={block:block.number,hash:block.hash,cash:balance,cashAllowancePool:allowance,poolShares,liquid,assets};
+      }finally{if(request===this.request){this.loading=false;this.emit();}}
+      if(this.wdIn)void this.previewWithdrawal();return;
+    }
     const frame=await this.transport.state(account);
+    if(request!==this.request)throw Error('Newer refresh superseded this snapshot');
     if(frame.block.number<minimum)throw Error('Snapshot has not reached receipt block; refresh required');
     if(!this.rpc||!this.manifest)throw Error('Manifest unavailable');
     const verifier=this.wallet??new Wallet({request:async()=>undefined},this.rpc,this.manifest);
@@ -111,6 +168,24 @@ export class Controller{
     }catch{if(this.loanMethod==='borrow'){this.loanArgs='';this.borrowSource='';}}
     try{const target=offerTarget(this.frame,this.offerBasisExplicit?this.offerLoanId||undefined:undefined,assetId);this.offerLoanId=target.loanId;if(!this.termsText||!this.termsManual){const old=this.termsText?JSON.parse(this.termsText):{};this.termsText=json(offerTemplate(this.frame,this.manifest.chainId,this.manifest.addresses.manager!,this.wallet.account,old,this.offerLoanId,assetId));}}
     catch{if(!this.termsManual)this.termsText='';if(!this.offerBasisExplicit)this.offerLoanId='';}
+    this.checkBuyer();
+  }
+  private checkBuyer(){
+    const frame=this.frame,account=this.wallet?.account,address=this.manifest?.addresses?.eligibility;
+    if(!frame||!account||!address||!this.termsText){this.buyerCheck=undefined;return;}
+    let terms;try{terms=JSON.parse(this.termsText);}catch{this.buyerCheck=undefined;return;}
+    const {assetId,policyHash}=terms;
+    const key=[frame.block.hash,address,account,assetId,policyHash].join(':');
+    if(this.buyerCheck?.key===key)return;
+    const check={key,reason:'Checking buyer eligibility for this session…'};this.buyerCheck=check;
+    void (async()=>{
+      try{
+        const eligible=await this.rpc.readContract({address,abi:eligibilityAbi,functionName:'isEligible',args:[assetId,account,policyHash],blockNumber:frame.block.number});
+        if(typeof eligible!=='boolean'||(await this.rpc.getBlock({blockNumber:frame.block.number})).hash!==frame.block.hash)throw Error('Eligibility block mismatch');
+        check.reason=eligible?'':'This buyer is not registered for this session. Ask the operator to register this address, then refresh.';
+      }catch{check.reason='Buyer eligibility could not be verified. Refresh before approving USDC.';}
+      if(this.buyerCheck===check)this.emit();
+    })();
   }
   previewCover(){if(this.quoteLocked)throw Error('Consent reviewed for approval · clear consent to review changed lots');if(!this.frame||!this.wallet?.account||!this.manifest)return;this.selectedReceiptId='';
     try{const old=this.quoteManual&&this.quoteText?JSON.parse(this.quoteText):{};const bounds=Object.fromEntries(['maxDebtAtAcceptance','maxDebtAtDeadline','expiry','totalPremium'].filter(k=>old[k]!==undefined).map(k=>[k,old[k]]));this.quoteText=json(coverPreview(this.frame,this.manifest.chainId,this.manifest.addresses.manager!,this.wallet.account,this.loanSelection(),this.selected,bounds));this.quoteSource=this.quoteIdentity();}catch(error){if(!this.quoteManual)this.quoteText='';this.status=error instanceof Error?error.message:'Review the selected lots and session window.';}this.emit();}
@@ -126,7 +201,7 @@ export class Controller{
       if('method'in intent&&intent.contract==='pool'&&intent.method==='redeem'){this.wdIn='';this.withdrawalQuote=undefined;}
       this.hash=receipt.transactionHash;this.status='CONFIRMED · canonical snapshot refreshed';return receipt;}finally{this.pending=false;this.emit();if(this.wdIn)void this.previewWithdrawal();}}
   set(field:string,value:string){if(field==='termsText')this.termsManual=!!value;if(field==='offerLoanId'){this.offerBasisExplicit=!!value;this.termsManual=false;if(!value)this.termsText='';}if(field==='quoteText'){this.quoteManual=true;this.quoteLocked=false;this.quoteSource=this.quoteIdentity();}if(field==='loanMethod'){this.loanArgs='';this.borrowSource='';}if(field==='selectedAssetId'){this.quoteText='';this.quoteSource='';this.quoteLocked=false;this.selected=[];this.selectedLoanId='';this.selectedReceiptId='';this.loanArgs='';this.borrowSource='';this.termsText='';this.termsManual=false;this.offerLoanId='';this.offerBasisExplicit=false;this.fMaxLtv=undefined;this.borrowAmount='';this.collateralAmount='';}(this as any)[field]=value;if(field==='wdIn'){this.withdrawalQuote=undefined;clearTimeout(this.withdrawalTimer);this.withdrawalTimer=setTimeout(()=>void this.previewWithdrawal(),250);}this.prefill();this.emit();}
-  private offerTerms(){const base=JSON.parse(this.termsText);if(this.offerExpiry)base.expiry=this.offerExpiry;if(this.fMaxLtv!==undefined){const ltv=exactUnits(this.fMaxLtv,2);if(ltv===0n||ltv>10000n)throw Error('Maximum borrower LTV must be above 0 and at most 100%');base.maxBorrowerLtvBps=ltv.toString();}return offerTerms(json(base),this.fShares,this.fPct,this.fFee);}
+  private offerTerms(){const base=JSON.parse(this.termsText);if(this.offerExpiry)base.expiry=this.offerExpiry;if(!base.expiry)throw Error('Choose a complete offer expiry date and time in UTC.');if(this.fMaxLtv!==undefined){const ltv=exactUnits(this.fMaxLtv,2);if(ltv===0n||ltv>10000n)throw Error('Maximum borrower LTV must be above 0 and at most 100%');base.maxBorrowerLtvBps=ltv.toString();}return offerTerms(json(base),this.fShares,this.fPct,this.fFee);}
   async post(){const receipt=await this.send({contract:'book',method:'postOffer',args:[this.offerTerms()]});if(this.wallet?.account&&this.manifest&&this.frame){const next=JSON.parse(this.termsText);delete next.nonce;this.termsText=json(next);this.termsManual=false;this.prefill();}this.emit();return receipt;}
   async borrow(){const {q,hashes,hash}=this.checkedCover();return this.send(coverIntent(this.loanSelection(),q,this.selected,hashes,hash));}
   async loanAction(){
@@ -145,12 +220,12 @@ export class Controller{
     if(value===0n)throw Error('No positive approval is needed.');return this.send({approval:purpose,amount:value.toString()});
   }
   async settleSelected(terminal:boolean){const v=this.renderVals();if(!v.receiptId)throw Error('Select the active session receipt.');return this.send({settlement:terminal?'terminalSettle':'settle',receiptId:v.receiptId});}
-  private withdrawalKey(){return `${this.session}:${this.frame?.block.hash}:${this.wallet?.account}:${this.wdIn}`;}
+  private withdrawalKey(){return `${this.session}:${this.lender?.hash??this.frame?.block.hash}:${this.wallet?.account}:${this.wdIn}`;}
   private withdrawalReason(){
     if(!this.wallet?.verified||!this.wallet.account)return 'Connect your wallet to withdraw.';
     if(this.pending)return 'Wait for the pending wallet transaction.';
-    if(!this.frame)return 'Load verified balances before withdrawing.';
-    try{const shares=exactUnits(this.wdIn,18),owned=this.frame.state.balances?.[this.wallet.account]?.poolShares;
+    if(!this.frame&&!this.lender)return 'Load verified balances before withdrawing.';
+    try{const shares=exactUnits(this.wdIn,18),owned=this.lender?.poolShares??this.frame?.state.balances?.[this.wallet.account]?.poolShares;
       if(owned===undefined)return 'Your pool share balance is unavailable.';
       if(shares>owned)return 'This amount exceeds your pool shares.';
     }catch(e){return (e as Error).message;}
@@ -162,7 +237,7 @@ export class Controller{
     this.withdrawalQuote={key};this.emit();
     try{
       const account=this.wallet!.account!,frame=this.frame!;
-      const {result}=await this.rpc.simulateContract({address:this.manifest!.addresses.pool,abi:abis.pool,functionName:'redeem',args:[exactUnits(this.wdIn,18),account],account,blockNumber:frame.block.number});
+      const {result}=await this.rpc.simulateContract({address:this.manifest!.addresses.pool,abi:abis.pool,functionName:'redeem',args:[exactUnits(this.wdIn,18),account],account,blockNumber:this.lender?.block??frame.block.number});
       if(key!==this.withdrawalKey())return;
       if(typeof result!=='bigint'||result<=0n)throw Error('ZeroConversion');
       this.withdrawalQuote={key,assets:result};
@@ -175,12 +250,15 @@ export class Controller{
   }
   private workflow(ready:boolean,p:any,cover:any,receiptId:string|undefined,balance:any){
     const state=this.frame?.state,account=this.wallet?.account,id=this.assetSelection(),a=id?state?.assets?.[id]:undefined,session=a?state?.sessions?.[a.state.activeSessionId]?.fact:undefined;
-    const baseReason=this.pending?'Wait for the pending wallet transaction.':!account?'Connect your wallet to continue.':!this.frame?'Loading verified chain state. Refresh and wait for verification.':'';
+    const baseReason=this.pending?(this.transactionPhase==='confirmed'?'Transaction confirmed. Checking the latest allowance and balances.':'Wait for the pending wallet transaction.'):!account?'Connect your wallet to continue.':!this.frame?'Loading verified chain state. Refresh and wait for verification.':'';
     let m:any,marketReason='';try{m=marketContext(this.frame!,id);}catch(e){marketReason=e instanceof Error?e.message:'Fresh market data required.';}
     let borrowReason=baseReason,borrowValid=false,collateralValid=false,supplyValid=false,offerValid=false,premiumValid=false,supplyReason=baseReason,postReason=baseReason,canPost=false,canSupply=false,offerEscrow:bigint|undefined;
     let collateral:bigint|undefined,supply:bigint|undefined;
     try{collateral=exactUnits(this.collateralAmount,18);collateralValid=ready&&!!id&&a?.configs&&Object.values(a.configs).some((c:any)=>c.configHash===a.state.configHash&&c.config.assetToken===this.manifest?.addresses.stock);}catch{}
-    try{supply=exactUnits(this.supIn,6);supplyValid=ready;}catch(e){if(!supplyReason)supplyReason=e instanceof Error?e.message:'Enter supply amount.';}
+    const lenderReady=ready||!!(this.lender&&account&&this.wallet?.verified&&!this.pending);
+    const funds=this.lender??balance;
+    if(lenderReady)supplyReason='';
+    try{supply=exactUnits(this.supIn,6);supplyValid=lenderReady;}catch(e){if(!supplyReason)supplyReason=e instanceof Error?e.message:'Enter supply amount.';}
     try{offerEscrow=cashOwed(exactUnits(this.fShares,18),exactUnits(this.fPct,6));offerValid=ready&&offerEscrow>0n;}catch{}
     if(!borrowReason)try{
       if(!m)throw Error(marketReason);const request=this.formBorrow(),principal=uint(request.principal),shares=uint(request.collateralShares),token=state?.stockTokens?.[m.config.assetToken]?.balances?.[account!];
@@ -190,9 +268,9 @@ export class Controller{
       if(liquid===undefined||liquid<principal)throw Error('The lender must supply enough USDC liquidity first.');
       borrowValid=ready;borrowReason='Review principal, collateral and the accepted reference before signing.';
     }catch(e){borrowReason=e instanceof Error?e.message:'Review borrow inputs.';}
-    if(!supplyReason&&supply!==undefined){if(balance?.cash===undefined||balance.cash<supply){supplyReason='Insufficient USDC balance; retain USDC for gas.';supplyValid=false;}else if(balance.cashAllowancePool===undefined||balance.cashAllowancePool<supply)supplyReason='Approve the supply USDC amount first.';else{canSupply=ready;supplyReason='Review your exact USDC deposit before signing.';}}
+    if(!supplyReason&&supply!==undefined){if(funds?.cash===undefined||funds.cash<supply){supplyReason='Insufficient USDC balance; retain USDC for gas.';supplyValid=false;}else if(funds.cashAllowancePool===undefined||funds.cashAllowancePool<supply)supplyReason='Approve the supply USDC amount first.';else{canSupply=lenderReady;supplyReason='Review your exact USDC deposit before signing.';}}
     if(!postReason)try{
-      if(!m)throw Error(marketReason);const terms=this.offerTerms(),expiry=uint(terms.expiry,64);
+      if(!m)throw Error(marketReason);if(this.manifest?.addresses?.eligibility&&this.buyerCheck?.reason!=='')throw Error(this.buyerCheck?.reason||'Load buyer eligibility for this session.');const terms=this.offerTerms(),expiry=uint(terms.expiry,64);
       if(expiry<=this.frame!.block.timestamp||expiry<=m.session.scheduledClose)throw Error('Choose an offer expiry after the session close.');
       const capacity=cashOwed(uint(terms.snapshotShares),uint(terms.strike));
       if(balance?.cash===undefined||balance.cash<capacity)throw Error('Insufficient USDC for this offer; retain USDC for gas.');
@@ -203,7 +281,7 @@ export class Controller{
     const active=ready&&!!receiptId&&cover?.receipt.status===1n,deadline=cover?.receipt.settlementDeadline,now=this.frame?.block.timestamp;
     const canSettle=!!(active&&now!==undefined&&deadline!==undefined&&now<deadline&&cover.benchmark?.finalized),canTerminalSettle=!!(active&&now!==undefined&&deadline!==undefined&&now>=deadline);
     const run=(f:()=>Promise<unknown>)=>()=>void this.run(f);
-    return {walletPanelOpen:this.walletPanelOpen,onWalletPanel:(open:boolean)=>{if(this.walletPanelOpen!==open){this.walletPanelOpen=open;this.emit();}},onRefresh:run(()=>this.refresh()),assetId:id??'',assetOptions:Object.entries(state?.assets??{}).map(([assetId,asset]:any)=>({id:assetId,label:`${state?.stockTokens?.[Object.values(asset.configs)[0]&&(Object.values(asset.configs)[0] as any).config.assetToken]?.symbol??'Stock'} · ${assetId.slice(0,10)}…`})),onAsset:(e:any)=>this.set('selectedAssetId',e.target.value),marketReady:!!m,marketReason,sessionClose:timestamp(session?.scheduledClose),coverWindow:session&&state?.coverPolicy?`${timestamp(BigInt(session.scheduledClose)-BigInt(state.coverPolicy.coverOpensBeforeClose))} — ${timestamp(BigInt(session.scheduledClose)-BigInt(state.coverPolicy.coverCutoffBeforeClose))}`:'Unavailable',referenceObserved:timestamp(a?.latestReference?.observedAt),borrowAmount:this.borrowAmount,collateralAmount:this.collateralAmount,onBorrowAmount:(e:any)=>this.set('borrowAmount',e.target.value),onCollateralAmount:(e:any)=>this.set('collateralAmount',e.target.value),canBorrow:borrowValid,borrowReason,onBorrow:run(()=>this.openOrdinaryLoan()),canApproveCollateral:collateralValid,onApproveCollateral:run(()=>this.approveAction('collateral')),canApproveSupply:supplyValid,onApproveSupply:run(()=>this.approveAction('deposit')),canApproveOffer:offerValid,onApproveOffer:run(()=>this.approveAction('offer')),canApprovePremium:premiumValid,onApprovePremium:run(()=>this.approveAction('premium')),offerExpiryInput:utcInput(this.offerExpiry||(()=>{try{return JSON.parse(this.termsText).expiry;}catch{return '';}})()),onOfferExpiry:(e:any)=>void this.run(async()=>this.set('offerExpiry',utcSeconds(e.target.value))),canSettle,canTerminalSettle,onSettle:run(()=>this.settleSelected(false)),onTerminalSettle:run(()=>this.settleSelected(true)),offerEscrowFmt:amount(offerEscrow,6),canPost,postReason,canSupply,supplyReason};
+    return {walletPanelOpen:this.walletPanelOpen,onWalletPanel:(open:boolean)=>{if(this.walletPanelOpen!==open){this.walletPanelOpen=open;this.emit();}},onRefresh:run(()=>this.refresh()),assetId:id??'',assetOptions:Object.entries(state?.assets??{}).map(([assetId,asset]:any)=>({id:assetId,label:`${state?.stockTokens?.[Object.values(asset.configs)[0]&&(Object.values(asset.configs)[0] as any).config.assetToken]?.symbol??'Stock'} · ${assetId.slice(0,10)}…`})),onAsset:(e:any)=>this.set('selectedAssetId',e.target.value),marketReady:!!m,marketReason,sessionClose:timestamp(session?.scheduledClose),coverWindow:session&&state?.coverPolicy?`${timestamp(BigInt(session.scheduledClose)-BigInt(state.coverPolicy.coverOpensBeforeClose))} — ${timestamp(BigInt(session.scheduledClose)-BigInt(state.coverPolicy.coverCutoffBeforeClose))}`:'Unavailable',referenceObserved:timestamp(a?.latestReference?.observedAt),borrowAmount:this.borrowAmount,collateralAmount:this.collateralAmount,onBorrowAmount:(e:any)=>this.set('borrowAmount',e.target.value),onCollateralAmount:(e:any)=>this.set('collateralAmount',e.target.value),canBorrow:borrowValid,borrowReason,onBorrow:run(()=>this.openOrdinaryLoan()),canApproveCollateral:collateralValid,onApproveCollateral:run(()=>this.approveAction('collateral')),canApproveSupply:supplyValid,onApproveSupply:run(()=>this.approveAction('deposit')),canApproveOffer:offerValid&&postReason==='Approve the offer cash amount first.',onApproveOffer:run(()=>this.approveAction('offer')),canApprovePremium:premiumValid,onApprovePremium:run(()=>this.approveAction('premium')),offerExpiryInput:utcInput(this.offerExpiry||(()=>{try{return JSON.parse(this.termsText).expiry;}catch{return '';}})()),onOfferExpiry:(e:any)=>void this.run(async()=>this.set('offerExpiry',utcSeconds(e.target.value))),canSettle,canTerminalSettle,onSettle:run(()=>this.settleSelected(false)),onTerminalSettle:run(()=>this.settleSelected(true)),offerEscrowFmt:amount(offerEscrow,6),canPost,postReason,canSupply,supplyReason};
   }
   renderVals():any{
     const state=this.frame?.state,account=this.wallet?.account,balance=account?state?.balances?.[account]:undefined;
@@ -246,7 +324,7 @@ export class Controller{
     const wallet={session:this.session,providerOptions,providerId:this.providerId||(announced.length===0&&single?single.id:''),chainId:this.wallet?.chainId?.toString(),expectedChainId:this.manifest?.chainId,expectedAddress:this.expectedAccount||undefined,connected:!!this.wallet?.verified};
     const withdrawal=this.withdrawalQuote?.key===this.withdrawalKey()?this.withdrawalQuote:undefined;
     const wdReason=this.withdrawalReason()||withdrawal?.error||(!withdrawal?.assets?'Checking withdrawal with the pool contract…':'');
-    const canWd=ready&&!wdReason;
+    const canWd=(ready||!!(this.lender&&this.wallet?.verified&&!this.pending))&&!wdReason;
     return {controller:this,workflow,wallet,controlReferenceFmt,stockSymbol:selectedStock?.symbol||'shares',frame:this.frame,account,labels,ready,loanId,receiptId,position,coverStatus,showCoverPreview,coverOptions:histories.map(([id,r]:any)=>({id,label:`RECEIPT ${id} · ${receiptLabel(r.receipt.status)}`})),onCover:(e:any)=>{if((e.target.value===''&&this.quoteText&&this.selected.length)||histories.some(([id])=>id===e.target.value)){this.selectedReceiptId=e.target.value;this.emit();}},loanArgs:this.loanArgs,loanMethod:this.loanMethod,receiptOptions:positions.map(([id,p]:any)=>({id,label:`LOAN ${id} · ${loanLabel(p.loan.status)}`})),onReceipt:(event:any)=>{if(positions.some(([id])=>id===event.target.value)){this.selectedLoanId=event.target.value;this.selectedReceiptId='';this.quoteLocked=false;this.quoteManual=false;this.previewCover();this.emit();}},termsText:this.termsText,quoteText:this.quoteText,selected:this.selected,offerLoanId:this.offerLoanId,offerLoanOptions:[{id:'current',label:'CURRENT SHARE BASIS'},...offerLoans.map(([id]:any)=>({id,label:`BASIS OF LOAN ${id}`}))],onOfferLoan:(e:any)=>this.set('offerLoanId',e.target.value),
       isHome:this.page==='HOME',isReplay:this.page==='REPLAY',isBorrow:this.page==='BORROW',isBackup:this.page==='BUYERS',isLend:this.page==='LEND',isControl:this.page==='CONTROL',notHome:this.page!=='HOME',pageOpacity:this.pageOpacity,wipeState:this.wipeState,loadOp:this.loadOp,loadT:this.wipeState==='in'?'opacity 140ms ease 280ms':'opacity 100ms ease',wide:this.wide,readPct:this.readPct,
       goHome:nav('HOME'),goReplay:nav('REPLAY'),goBorrow:nav('BORROW'),goBackup:nav('BUYERS'),goLend:nav('LEND'),goControl:nav('CONTROL'),menuOpen:this.menu,menuAria:String(this.menu),openMenu:()=>{this.menu=true;this.emit();},closeMenu:()=>{this.menu=false;this.emit();},menuLeave:()=>{this.hover='';this.emit();},menuItems:pages.map((label,i)=>({label,num:String(i+1).padStart(2,'0'),go:nav(label),enter:()=>{this.hover=label;this.emit();},scale:!this.hover?1:this.hover===label?1.6:(pages.length-1.6)/(pages.length-1),ls:this.hover===label?'0.16em':'0.04em',op:!this.hover||this.hover===label?1:.55,aria:this.page===label?'page':'false',mark:this.page===label?'● CURRENT':'',delay:120+i*90})),
@@ -256,7 +334,7 @@ export class Controller{
       faqs:faq.map(([q,a],i)=>({q,a,fg:ink,toggle:()=>{this.faqOpen=this.faqOpen===i?-1:i;this.emit();},aria:String(this.faqOpen===i),id:`faq-${i}`,rot:this.faqOpen===i?'0deg':'90deg',rows:this.faqOpen===i?'1fr':'0fr',hidden:String(this.faqOpen!==i),op:this.faqOpen===i?1:0,ty:'0px',blur:'0px',delay:'0ms'})),
       bell:card,base:{...card,badge:'NO BASELINE',pxSrc:'NO BASELINE CONTRACT CONNECTED',shFmt:'—',debtFmt:'—',pxFmt:'—',ratioFmt:'—',barW:'0%',limitFmt:'—',lockFmt:'—',lockW:'0%',valFmt:'—',note:'No baseline contract is connected to this deployment.'},quote:offers.map(o=>({...o,fg:ink,netFmt:'—',cashFmt:o.escFmt})),breakdownLabel:cover?'COVER BREAKDOWN':'COVER PREVIEW · UNCONFIRMED',needLabel:cover?'RECEIPT CASH LOCKED':'SELECTED LOT CASH',quoteDebtLabel:cover?'DEBT AT ACCEPTANCE':'CURRENT LOAN DEBT',qShares:amount(cover?.receipt.consent.totalOfferShares??previewShares,18),refCloseFmt:amount(cover?.receipt.consent.referencePrice??previewReference,6),quoteDebtFmt:amount(cover?.receipt.debtAtAcceptance??position?.debt,6),quoteInterestFmt:amount(cover?.receipt.debtCeiling??previewCeiling,6),quoteReserveFmt:cover?.receipt.settlementDeadline?.toString()??previewDeadline?.toString()??'—',needFmt:amount(cover?.receiptRemainingCoverage??previewCoverage,6),feesFmt:amount(balance?.premiumCredit,6),quotePremiumFmt:amount(cover?.receipt.consent.totalPremium??previewPremium,6),buyOk,buyNo:!buyOk,buyReason,buyReasonColor:muted,onBuy:run(()=>this.borrow()),
       offers,hasOffers:offers.length>0,noOffers:offers.length===0,claims,noClaims:claims.length===0,fShares:this.fShares,fPct:this.fPct,fFee:this.fFee,fMaxLtv:this.fMaxLtv??(()=>{try{return amount(BigInt(JSON.parse(this.termsText).maxBorrowerLtvBps),2);}catch{return '';}})(),onFMaxLtv:change('fMaxLtv'),fEscrowFmt:workflow.offerEscrowFmt,fFeesFmt:this.fFee||'—',fPxFmt:this.fPct||'—',floorFmt:'PER OFFER TERMS',onFShares:change('fShares'),onFPct:change('fPct'),onFFee:change('fFee'),postOk:workflow.canPost,postNo:!workflow.canPost,postReason:workflow.postReason,postReasonColor:muted,onPost:run(()=>this.post()),
-      supIn:this.supIn,wdIn:this.wdIn,onSupIn:change('supIn'),onWdIn:change('wdIn'),canSupply:workflow.canSupply,cantSupply:!workflow.canSupply,canWd,cantWd:!canWd,supplyReason:workflow.supplyReason,wdReason,onSupply:run(()=>this.send({contract:'pool',method:'deposit',args:[exactUnits(this.supIn,6).toString()]})),onWd:run(async()=>{if(!this.renderVals().canWd)throw Error('Review a fresh withdrawal preview first.');return this.send({contract:'pool',method:'redeem',args:[exactUnits(this.wdIn,18).toString(),account]});}),lend:{withdrawFmt:amount(!this.withdrawalReason()?withdrawal?.assets:undefined,6),walletFmt:amount(balance?.cash,6),balFmt:amount(balance?.poolShares,18),rateFmt:amount(state?.pool.totalAssets,6),utilFmt:amount(state?.balances?.[this.manifest?.addresses.pool?.toLowerCase()??'']?.cash,6),covPct:`${amount(coveredBps,2)}%`,stdPct:`${amount(10000n-coveredBps,2)}%`,debtFmt:amount(poolDebt,6),covW:`${Number(coveredBps)/100}%`,hasRecv:repaid>0n,recvFmt:amount(repaid,6)},
+      supIn:this.supIn,wdIn:this.wdIn,onSupIn:change('supIn'),onWdIn:change('wdIn'),canSupply:workflow.canSupply,cantSupply:!workflow.canSupply,canWd,cantWd:!canWd,supplyReason:workflow.supplyReason,wdReason,onSupply:run(()=>this.send({contract:'pool',method:'deposit',args:[exactUnits(this.supIn,6).toString()]})),onWd:run(async()=>{if(!this.renderVals().canWd)throw Error('Review a fresh withdrawal preview first.');return this.send({contract:'pool',method:'redeem',args:[exactUnits(this.wdIn,18).toString(),account]});}),lend:{block:this.lender?.block??this.frame?.block.number,shares:this.lender?.poolShares??balance?.poolShares,withdrawFmt:amount(!this.withdrawalReason()?withdrawal?.assets:undefined,6),walletFmt:amount(this.lender?.cash??balance?.cash,6),balFmt:amount(this.lender?.poolShares??balance?.poolShares,18),rateFmt:amount(this.lender?.assets??state?.pool.totalAssets,6),utilFmt:amount(this.lender?.liquid??state?.balances?.[this.manifest?.addresses.pool?.toLowerCase()??'']?.cash,6),covPct:`${amount(coveredBps,2)}%`,stdPct:`${amount(10000n-coveredBps,2)}%`,debtFmt:amount(this.lender?this.lender.assets-this.lender.liquid:poolDebt,6),covW:`${Number(coveredBps)/100}%`,hasRecv:repaid>0n,recvFmt:amount(repaid,6)},
       evNum:this.events.length?String(this.eventIndex+1):'—',evTitle:this.events[this.eventIndex]?.decoded?.eventName??'No report evidence loaded',evBody:'Accepted logs are evidence. Contract state remains authoritative.',evClock:this.events[this.eventIndex]?.blockTimestamp.toString()??'—',evColor:muted,scLabel:'ACCEPTED EVIDENCE',scDates:'ONCHAIN EVENTS',onPrev:()=>{this.eventIndex=Math.max(0,this.eventIndex-1);this.emit();},onAdvance:run(()=>this.refresh()),onNext:()=>{this.eventIndex=Math.min(this.events.length-1,this.eventIndex+1);this.emit();},onPlay:run(()=>this.refresh()),onReset:run(()=>this.refresh()),canNext:this.eventIndex<this.events.length-1,cantNext:!(this.eventIndex<this.events.length-1),nextReason:'No later indexed evidence',canPlay:!this.pending,playLabel:'REFRESH',playIcon:'refresh-cw',playAria:'false',replayControlsEnabled:this.events.length>0,nowPct:'0%',chapters:['SCHEDULE','CLOSE','BENCHMARK','RECEIPTS'].map((label,i)=>({label,num:String(i+1).padStart(2,'0'),fg:muted,aria:'false',fill:'0%',go:()=>{const index=this.events.findIndex(e=>i===3?['LoanOpened','CoverPurchased','CoverEnded'].includes(e.decoded?.eventName):e.decoded?.eventName==='MarketEventAccepted'&&String(e.decoded.args.kind)===String(i+1));if(index>=0){this.eventIndex=index;this.emit();}}})),segs:[],progress:[],outcome:{show:false,bell:'—',base:'—',diff:'—',color:muted},hasRej:false,lowballLabel:'',tk1:muted,tk2:muted,tk3:muted,tk4:muted,showLog:this.showLog,toggleLog:()=>{this.showLog=!this.showLog;this.emit();},log:this.events.map((e,i)=>({t:`${e.blockNumber} · ${e.blockTimestamp}`,x:e.decoded?.eventName??'Contract log',color:muted})),logCount:this.events.length,logAria:'true',logArrow:'↑',logIcon:'list',oracleKnob:'0%',liveOAria:'false',frozenAria:'false',liveOFg:muted,frozenFg:muted,setFrozen:()=>{},setLiveOracle:()=>{},monPctFmt:'—',monPctV:'',onMonPct:()=>{},monPxFmt:'—',
       statusOpts:[this.frame?'ONCHAIN':'UNAVAILABLE','BLOCK TIME','WALLET'].map(label=>({label,fg:muted,bg:'transparent',aria:'false',go:run(()=>this.refresh())})),priceIn:this.priceIn,onPriceIn:change('priceIn'),onSetPrice:run(()=>this.refresh()),onClearPrice:run(()=>this.refresh()),tokenColor:muted,tokenState:selectedStock?.paused===undefined?'UNAVAILABLE':selectedStock.paused?'PAUSED · DELIVERY BLOCKED':'TRANSFERS ENABLED',pauseLabel:'REFRESH STATE',onTogglePause:run(()=>this.refresh()),rawFrame:this.frame?json(this.frame):'No snapshot',
     };

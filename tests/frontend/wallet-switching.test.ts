@@ -17,7 +17,7 @@ function wallet(account:string,chain=ARC){
     emit:(event:string,...args:any[])=>listeners.get(event)?.forEach(f=>f(...args)),
     listenerCount:()=>[...listeners.values()].reduce((n,s)=>n+s.size,0),
     provider:{
-      request:async({method}:{method:string})=>{calls.push(method);switch(method){
+      request:async({method}:{method:string}):Promise<any>=>{calls.push(method);switch(method){
         case 'eth_requestAccounts':case 'eth_accounts':return [state.account];
         case 'eth_chainId':return state.chain;
         case 'eth_getBlockByNumber':return block;
@@ -153,3 +153,57 @@ test('connecting through the legacy fallback records its provider identity',asyn
  try{c.chooseAccount(alice);await c.connect();assert.equal(c.providerId,'window.ethereum');}
  finally{delete (globalThis as any).window;}
 });
+
+test('connecting adds an unknown Arc network, switches, then verifies only the selected provider',async()=>{
+ const a=wallet(alice,'0x1'),b=wallet(rahul),original=a.provider.request,requests:any[]=[];let added=false;
+ a.provider.request=async(request:any)=>{requests.push(request);if(request.method==='wallet_switchEthereumChain'){if(!added)throw {code:-32603,data:{originalError:{code:4902}}};a.state.chain=ARC;a.emit('chainChanged',ARC);return null;}if(request.method==='wallet_addEthereumChain'){added=true;return null;}return original(request);};
+ const c=app([metamask(a),rabby(b)]);c.chooseProvider('uuid-metamask');await c.connect();
+ assert.equal(c.renderVals().ready,true);assert.equal(c.wallet?.account,alice);assert.deepEqual(b.calls,[]);
+ const changes=requests.filter(x=>x.method.startsWith('wallet_'));
+ assert.deepEqual(changes.map(x=>x.method),['wallet_switchEthereumChain','wallet_addEthereumChain','wallet_switchEthereumChain']);
+ assert.deepEqual(changes[1].params,[{chainId:ARC,chainName:'Arc Testnet',nativeCurrency:{name:'USDC',symbol:'USDC',decimals:18},rpcUrls:['https://rpc.testnet.arc.io'],blockExplorerUrls:['https://explorer.testnet.arc.io']}]);
+ assert.equal(a.calls.includes('eth_sendTransaction'),false);
+});
+test('a rejected network switch never adds a chain or connects',async()=>{
+ const a=wallet(alice,'0x1'),original=a.provider.request,calls:string[]=[];
+ a.provider.request=async request=>{calls.push(request.method);if(request.method==='wallet_switchEthereumChain')throw {code:4001};return original(request);};
+ const c=app([metamask(a)]);c.chooseProvider('uuid-metamask');await c.run(()=>c.connect());
+ assert.match(c.status,/cancelled|rejected/i);assert.equal(c.wallet,undefined);assert.equal(calls.includes('wallet_addEthereumChain'),false);assert.equal(calls.includes('eth_requestAccounts'),false);
+});
+test('changing the chosen provider during network approval cannot reconnect either provider',async()=>{
+ const a=wallet(alice,'0x1'),b=wallet(rahul),original=a.provider.request;let release!:()=>void;const waiting=new Promise<void>(r=>release=r);let started!:()=>void;const entered=new Promise<void>(r=>started=r);
+ a.provider.request=async request=>{if(request.method==='wallet_switchEthereumChain'){started();await waiting;a.state.chain=ARC;return null;}return original(request);};
+ const c=app([metamask(a),rabby(b)]);c.chooseProvider('uuid-metamask');const result=c.connect();await entered;c.chooseProvider('uuid-rabby');release();await assert.rejects(result,/changed/i);assert.equal(c.wallet,undefined);assert.deepEqual(b.calls,[]);
+});
+test('RPC timeouts show a useful retry message without dumping request bodies',async()=>{
+ const c=new Controller();await c.run(async()=>{throw Error('The request took too long to respond.\nURL: /rpc\nRequest body: {"method":"eth_getCode"}\nVersion: viem');});
+ assert.match(c.status,/retry|try again/i);assert.doesNotMatch(c.status,/Request body|eth_getCode|Version:/);
+});
+
+test('network setup rejects a wallet that reports success without switching',async()=>{
+ const a=wallet(alice,'0x1'),original=a.provider.request;a.provider.request=async request=>request.method==='wallet_switchEthereumChain'?null:original(request);
+ const c=app([metamask(a)]);c.chooseProvider('uuid-metamask');await assert.rejects(c.connect(),/chain mismatch/i);assert.equal(c.wallet,undefined);assert.equal(a.calls.includes('eth_requestAccounts'),false);
+});
+test('rejecting network addition does not retry switching or request accounts',async()=>{
+ const a=wallet(alice,'0x1'),original=a.provider.request,changes:string[]=[];
+ a.provider.request=async request=>{if(request.method.startsWith('wallet_')){changes.push(request.method);throw {code:request.method==='wallet_addEthereumChain'?4001:4902};}return original(request);};
+ const c=app([metamask(a)]);c.chooseProvider('uuid-metamask');await c.run(()=>c.connect());assert.match(c.status,/cancelled/i);assert.deepEqual(changes,['wallet_switchEthereumChain','wallet_addEthereumChain']);assert.equal(c.wallet,undefined);assert.equal(a.calls.includes('eth_requestAccounts'),false);
+});
+
+test('page reload restores the chosen page and only the previously authorized wallet',async()=>{
+ const prior=(globalThis as any).window,values=new Map<string,string>();
+ const a=wallet(alice),b=wallet(rahul),all=[metamask(a),rabby(b)];
+ const win=Object.assign(bus(all),{innerWidth:1400,matchMedia:()=>({matches:true}),scrollTo:()=>{},sessionStorage:{getItem:(k:string)=>values.get(k)??null,setItem:(k:string,v:string)=>values.set(k,v),removeItem:(k:string)=>values.delete(k)}});
+ (globalThis as any).window=win;
+ const reload=()=>{const c=app([]);c.start();return c;};
+ try{
+   const first=app(all);first.go('REPLAY');first.chooseProvider('uuid-rabby');await first.connect();first.stop();
+   all[1]![0]='replacement-page-uuid';a.calls.length=0;b.calls.length=0;
+   const second=reload();
+   try{await waitFor(()=>!!second.wallet?.verified);assert.equal(second.page,'REPLAY');assert.equal(second.wallet?.account,rahul);
+   assert.deepEqual(a.calls,[]);assert.ok(!b.calls.includes('eth_requestAccounts'));assert.ok(!b.calls.some(method=>method.startsWith('wallet_')));
+   second.disconnect();}finally{second.stop();}
+   const third=reload();await new Promise(r=>setTimeout(r,30));assert.equal(third.wallet,undefined);assert.equal(third.page,'REPLAY');third.stop();
+ }finally{(globalThis as any).window=prior;}
+});
+async function waitFor(condition:()=>boolean){for(let i=0;i<100&&!condition();i++)await new Promise(r=>setTimeout(r,10));assert.ok(condition());}
