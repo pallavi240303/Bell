@@ -18,11 +18,11 @@
   "configHash": "0xc7fe5101a40ded8e2ecf8bec96b8a29d55012d3819548d34e5183a4366f7948b",
   "stage": "origination",
   "session": {
-    "id": "0x08d1f7c745d4f269d315cd5678b1936966d149ef8c93affb72d89b429bf483cd",
-    "reference": "0x2348dd6eab7749c9598b020925c42851a9533a768de7bcf83f1adf7f484d0af8",
-    "open": 1794017231,
-    "close": 1794017831,
-    "reopen": 1794017833
+    "id": "0x57729a5f5226a51ac9079517cb4de92c5504b3951e663a45dfa3a3df40901896",
+    "reference": "0x08d1f7c745d4f269d315cd5678b1936966d149ef8c93affb72d89b429bf483cd",
+    "open": 1794018982,
+    "close": 1794019582,
+    "reopen": 1794019584
   },
   "reports": [
     {
@@ -80,6 +80,38 @@
       "reportHash": "0xa8cd5167bae91d628647a65b91cc92252d65a786239155e9d8be4c74de465433",
       "price": "1969900",
       "sessionId": "0x08d1f7c745d4f269d315cd5678b1936966d149ef8c93affb72d89b429bf483cd"
+    },
+    {
+      "stage": "close",
+      "authority": "Native CRE supplied replay calendar",
+      "transactionHash": "0x75bab6e95801154afa4d2a780b0206a8acf34a351621047be62b371db5191114",
+      "reportHash": "0x5cf396b5af06ce96fbc777ab1a40bcc0dc52f3b7c254751a4f53f17da262944d",
+      "price": "0",
+      "sessionId": "0x08d1f7c745d4f269d315cd5678b1936966d149ef8c93affb72d89b429bf483cd"
+    },
+    {
+      "stage": "reopen",
+      "authority": "Native CRE historical HTTP replay",
+      "transactionHash": "0x6a87d8e5430b96f23a3b0839f41ed7edc0e27ace60527f997df99dd01cf51f9f",
+      "reportHash": "0x89757b1f8d7893c738adb0e2e62540af04287cffc899c04a62abf0fd21220788",
+      "price": "1565000",
+      "sessionId": "0x08d1f7c745d4f269d315cd5678b1936966d149ef8c93affb72d89b429bf483cd"
+    },
+    {
+      "stage": "schedule",
+      "authority": "Native CRE supplied replay calendar",
+      "transactionHash": "0xdb303b549f8d75aec65db1a39afc20ef68c65a261b238926f47fafa29bbc64cc",
+      "reportHash": "0x46fa5bab89ed6acfb4465da288e78947bed8e4dad725daa8fb0efe30a8e35157",
+      "price": "0",
+      "sessionId": "0x57729a5f5226a51ac9079517cb4de92c5504b3951e663a45dfa3a3df40901896"
+    },
+    {
+      "stage": "origination",
+      "authority": "Native CRE historical HTTP replay",
+      "transactionHash": "0xf02ca8bc4800b6a581fe57a6a8394b22b9b28c76fb4d560cad51e3695adfa687",
+      "reportHash": "0x21805125ed594121972574eb6fa61607cb8336e4acec333d3d2917f53953060a",
+      "price": "1969900",
+      "sessionId": "0x57729a5f5226a51ac9079517cb4de92c5504b3951e663a45dfa3a3df40901896"
     }
   ],
   "setupTransactions": [
@@ -111,6 +143,11 @@
     {
       "label": "mint-0x6da05b79d241f08a1556f7ded69ef3e74b520eca",
       "hash": "0x7beb996a38b7f44bf677035868e6a0a6f80a284d3c24ac5380b6143f55b18b2f",
+      "transactionSucceeded": true
+    },
+    {
+      "label": "eligible-0x57729a5f5226a51ac9079517cb4de92c5504b3951e663a45dfa3a3df40901896-0x51af7c2a4b952767dff9028d4415252bdde93f30",
+      "hash": "0x8c2d4b7eb6335876c27c2c1433f77a160c70d5bef59a1000efd0e4feda1c0979",
       "transactionSucceeded": true
     }
   ],
