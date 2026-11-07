@@ -25,6 +25,8 @@ public/fonts/**
 public/images/**
 !public/images/trading-floor.jpg
 !public/images/hero-weekend.jpg
+!public/images/bell-stock-shield.png
+!public/images/bell-liquidity.png
 !scripts/
 scripts/**
 !scripts/generate-browser-abis.ts

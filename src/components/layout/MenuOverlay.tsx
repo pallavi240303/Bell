@@ -20,23 +20,23 @@ export function MenuOverlay() {
         </button>
       </div>
       <nav className="max-w-380 w-full my-0 mx-auto py-0 px-6 flex-1 min-h-0 flex flex-col justify-stretch gap-0" aria-label="All pages">
-        {v.menuItems.map((it: any, i: number) => (
+        {v.menuItems.filter((it:any)=>!['BUYERS','LEND'].includes(it.label)).map((it: any, i: number) => (
           <Fragment key={i}>
-            <button className="flex-[1_1_0] min-h-0 flex items-center gap-5 bg-transparent border-0 border-current border-b border-b-[rgba(255,255,255,0.28)] text-white [font-family:inherit] text-left cursor-pointer [transition:transform_300ms_cubic-bezier(0.22,1,0.36,1),_padding_500ms_cubic-bezier(0.22,1,0.36,1),_color_200ms] hover:text-white hover:[transform:translateX(8px)]" style={{ padding: `calc(clamp(4px, 1.2vh, 12px) * ${it.scale}) 0` }} onClick={it.go} onMouseEnter={it.enter} onFocus={it.enter} onMouseLeave={v.menuLeave} onBlur={v.menuLeave} aria-label={it.label} aria-current={it.aria === 'false' ? undefined : (it.aria as 'page' | 'step')}>
+            <button className="flex-[1_1_0] min-h-0 flex items-center gap-5 bg-transparent border-0 border-current border-b border-b-[rgba(255,255,255,0.28)] text-white [font-family:inherit] text-left cursor-pointer [transition:transform_300ms_cubic-bezier(0.22,1,0.36,1),_padding_500ms_cubic-bezier(0.22,1,0.36,1),_color_200ms] hover:text-white hover:[transform:translateX(8px)]" style={{ padding: `calc(clamp(4px, 1.2vh, 12px) * ${it.scale}) 0` }} onClick={it.go} onMouseEnter={it.enter} onFocus={it.enter} onMouseLeave={v.menuLeave} onBlur={v.menuLeave} aria-label={({BORROW:'App',REPLAY:'Guided demo',CONTROL:'Activity'} as Record<string,string>)[it.label]??it.label} aria-current={it.aria === 'false' ? undefined : (it.aria as 'page' | 'step')}>
               <span className="text-[12px] tracking-[0.16em] text-violet-soft min-w-7">
-                {it.num}
+                {String(i+1).padStart(2,'0')}
               </span>
               <span className="font-light leading-[1.1] whitespace-nowrap inline-block [transition:font-size_500ms_cubic-bezier(0.22,1,0.36,1),_letter-spacing_500ms_cubic-bezier(0.22,1,0.36,1),_opacity_300ms]" style={{ fontSize: `calc(clamp(22px, min(7vw, 7.5vh), 80px) * ${it.scale})`, letterSpacing: it.ls, opacity: it.op }}>
-                <TypeLine text={it.label} delay={it.delay} />
+                <TypeLine text={({BORROW:'APP',REPLAY:'GUIDED DEMO',CONTROL:'ACTIVITY'} as Record<string,string>)[it.label]??it.label} delay={it.delay} />
               </span>
-              <span className="ml-auto text-[11px] tracking-[0.18em] text-violet-soft">
+              <span className="ml-auto text-[12px] tracking-[0.18em] text-violet-soft">
                 {it.mark}
               </span>
             </button>
           </Fragment>
         ))}
       </nav>
-      <div className="max-w-380 w-full my-0 mx-auto py-3.5 px-6 flex flex-wrap justify-between gap-3 text-[11px] tracking-[0.18em] text-violet-soft border-t border-t-[rgba(255,255,255,0.28)]">
+      <div className="max-w-380 w-full my-0 mx-auto py-3.5 px-6 flex flex-wrap justify-between gap-3 text-[12px] tracking-[0.18em] text-violet-soft border-t border-t-[rgba(255,255,255,0.28)]">
         <span>
           BACKED BEFORE THE BELL.
         </span>

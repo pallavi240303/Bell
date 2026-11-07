@@ -41,7 +41,8 @@ export function TargetCursor() {
     const move = (e: PointerEvent) => {
       mx = e.clientX;
       my = e.clientY;
-      const t = (e.target as Element | null)?.closest?.(SELECTOR) ?? null;
+      const target = e.target as Element | null;
+      const t = target?.closest?.('.bell-header') ? null : target?.closest?.(SELECTOR) ?? null;
       if (t !== tgt) { tgt = t; if (!tgt) idle(); }
       req();
     };
@@ -69,7 +70,7 @@ export function TargetCursor() {
   const corner = 'absolute left-0 top-0 box-content h-[11px] w-[11px] border-[2.5px] border-solid border-white [transition:transform_.18s_cubic-bezier(.22,1,.36,1)]';
   return (
     <div aria-hidden="true" className="pointer-events-none fixed left-0 top-0 z-[400] h-0 w-0 mix-blend-difference" data-visual-effects="cursor">
-      <div ref={wrap} className="fixed left-0 top-0 h-0 w-0 will-change-transform">
+      <div ref={wrap} className="fixed left-0 top-0 h-0 w-0 will-change-transform" style={{ transform: 'translate(-100px, -100px)' }}>
         <span ref={dot} className="absolute -left-0.5 -top-0.5 h-1 w-1 rounded-full bg-white [transition:transform_.2s]" />
         <div className="absolute left-0 top-0 h-0 w-0">
           <span ref={(el) => { corners.current[0] = el; }} className={`${corner} border-r-0 border-b-0 rounded-tl-[5px]`} />
