@@ -14,9 +14,9 @@ test('review 4: indexed evidence retains historical provenance and rejects stale
   const {indexedEvents}=(await import('../state.ts')) as any;assert.equal(typeof indexedEvents,'function');
   const hash=(n:string)=>`0x${n.repeat(64)}`;
   const address='0x0000000000000000000000000000000000000001';
-  const blocks=[{header:{number:'1',hash:hash('1'),timestamp:'10'},logs:[{address,blockNumber:'1',blockHash:hash('1')}]},{header:{number:'2',hash:hash('2'),timestamp:'20'},logs:[{address,blockNumber:'2',blockHash:hash('2')}] }];
+  const blocks=[{header:{number:'1',hash:hash('1'),parentHash:hash('0'),timestamp:'10'},logs:[{address,blockNumber:'1',blockHash:hash('1')}]},{header:{number:'2',hash:hash('2'),parentHash:hash('1'),timestamp:'20'},logs:[{address,blockNumber:'2',blockHash:hash('2')}] }];
   let syncs=0;
-  const index={store:{deployment:{addresses:{manager:address,cash:'0x0000000000000000000000000000000000000002'}},data:{blocks}},sync:async()=>{syncs++;}};
+  const index={store:{deployment:{deploymentBlock:'1',addresses:{manager:address,cash:'0x0000000000000000000000000000000000000002'}},data:{blocks,cursor:{blockNumber:'2',blockHash:hash('2')}}},sync:async()=>{syncs++;}};
   const rpc={getBlock:async({blockNumber}:any)=>({number:blockNumber,hash:hash(blockNumber.toString()),timestamp:blockNumber*10n})};
   const evidence=await indexedEvents(index,rpc,{number:1n,hash:hash('1')});assert.equal(evidence.block.number,1n);assert.equal(evidence.events.length,1);assert.equal(evidence.events[0].blockTimestamp,10n);assert.equal(syncs,0,'committed boundary returns without catching up to a newer head');
   await assert.rejects(()=>indexedEvents(index,rpc,{number:1n,hash:hash('3')}),/boundary/);assert.equal(syncs,1,'missing boundary still syncs');

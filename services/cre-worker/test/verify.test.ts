@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {keccak256,toHex,encodeFunctionData,encodeEventTopics,encodeAbiParameters,parseAbiParameters} from 'viem';
 import {fixture} from '../../../cre/bell-market-event/tests/fixtures.ts';
-import {nativeCLI,checkReceipt,eventAbi,forwarderAbi,learnQuoteResult,validateQuotePayload,parseNativeResult,classifyCLIError} from '../verify.ts';
+import {prepareReplay,nativeCLI,checkReceipt,eventAbi,forwarderAbi,learnQuoteResult,validateQuotePayload,parseNativeResult,classifyCLIError} from '../verify.ts';
 import {decide,encodeReport,configurationHash} from '../../../cre/bell-market-event/src/core.ts';
 
 test('native child uses frozen config and private runtime file and removes secrets even on exit failure',async()=>{
@@ -61,4 +61,9 @@ test('signal cancellation waits for the native child to exit before returning co
 
 test('CLI diagnostics expose fixed categories and never untrusted output',()=>{
  for(const [text,expected] of [['authentication required: private-value','CLI_AUTH_REQUIRED'],['validation error ConfigPath private-value','CLI_SETTINGS_INVALID'],['private-value','CLI_EXECUTION_FAILED']])assert.equal(classifyCLIError({stdout:text,stderr:''}),expected);
+});
+
+test('hosted worker refuses the local historical operator mode before chain access',async()=>{
+ const config:any={...fixture().config,dataSource:'gpro-history',historical:{stage:'cover'}};
+ await assert.rejects(()=>prepareReplay({config} as any,{},'',{} as any),/HISTORICAL_REPLAY_USE_LOCAL_OPERATOR/);
 });

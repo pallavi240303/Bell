@@ -126,6 +126,7 @@ export async function verifyCanonical(f:Frozen,client:any):Promise<Proof|undefin
 export interface Deployment {chainId:string;addresses:{oracle:string;registry:string;receiver:string};codeHashes:Record<string,string>}
 export async function prepareReplay(job:Job,client:any,rpc:string,deployment:Deployment,transmitter?:Hex):Promise<Frozen>{
  const c=job.config;
+ if(c.dataSource==='gpro-history')throw Error('HISTORICAL_REPLAY_USE_LOCAL_OPERATOR');
  if(c.mode!=='replay'||c.chainId!==deployment.chainId||c.oracle!==lower(deployment.addresses.oracle)||c.registry!==lower(deployment.addresses.registry)||c.simulationReceiver!==lower(deployment.addresses.receiver))throw Error('DEPLOYMENT_IDENTITY');
  if(String(await client.getChainId())!==c.chainId)throw Error('CHAIN_IDENTITY');
  const block=await client.getBlock({blockTag:'finalized'});if(block.number===null||!block.hash)throw Error('SOURCE_BLOCK');
